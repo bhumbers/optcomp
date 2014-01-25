@@ -11,3 +11,7 @@
 *.lai
 *.la
 *.a
+
+# LLVM output
+*.ll
+*.bc
