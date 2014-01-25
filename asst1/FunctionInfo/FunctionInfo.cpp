@@ -4,6 +4,7 @@
 
 #include "llvm/Pass.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/IR/Module.h"
 
@@ -21,25 +22,44 @@ class FunctionInfo : public ModulePass {
   void printFunctionInfo(Module& M) {
     std::cout << "Module " << M.getModuleIdentifier().c_str() << std::endl;
     std::cout << "Name,\tArgs,\tCalls,\tBlocks,\tInsns\n";
-    
-    // TODO: Print out information about each function in this format.
-    
-    
-    
-    
-    bool is_var_arg = false;
-    size_t arg_count = 0;
-    size_t callsite_count = 0;
-    size_t block_count = 0;
-    size_t instruction_count = 0;
-    std::cout << "function_name" << ",\t";
-    if (is_var_arg) {
-      std::cout << "*,\t";
-    } else {
-      std::cout << arg_count << ",\t";
+  
+    //Iterate over all functions and collect info for each
+    for (Module::iterator modIter = M.begin(); modIter != M.end(); ++modIter) {
+      Function* targetFunc = modIter;
+      
+      std::string func_name = targetFunc->getName();
+      bool is_var_arg = targetFunc->isVarArg();
+      size_t arg_count = targetFunc->arg_size();
+      size_t callsite_count = 0;
+      size_t block_count = targetFunc->getBasicBlockList().size();
+      size_t instruction_count = 0;
+      
+      //Count all intructions in basic blocks for this func
+      for (Function::iterator funIter = modIter->begin(); funIter != modIter->end(); ++funIter) 
+        instruction_count += funIter->getInstList().size();
+      
+      //Iterate through complete module and count number of calls to this function
+      int count = 0;
+      for (Module::iterator modIter = M.begin(); modIter != M.end(); ++modIter) {
+        for (Function::iterator funIter = modIter->begin(); funIter != modIter->end(); ++funIter) {
+          for (BasicBlock::iterator bbIter = funIter->begin(); bbIter != funIter->end(); ++bbIter) {
+            if (CallInst* callInst = dyn_cast<CallInst>(&*bbIter)) {              
+              if (callInst->getCalledFunction() == targetFunc) {
+                ++callsite_count;
+              }
+            }
+          }
+        }
+      }
+      
+      std::cout << func_name << ",\t";
+      if (is_var_arg) {
+        std::cout << "*,\t";
+      } else {
+        std::cout << arg_count << ",\t";
+      }
+      std::cout << callsite_count << ",\t" << block_count << ",\t" << instruction_count << std::endl;
     }
-    std::cout << callsite_count << ",\t" << block_count << ",\t"
-        << instruction_count << std::endl;
   }
 
 public:
@@ -65,7 +85,6 @@ public:
     for (Module::iterator MI = M.begin(), ME = M.end(); MI != ME; ++MI) {
       runOnFunction(*MI);
     }
-    // TODO: uncomment this.
     printFunctionInfo(M);
     return false;
   }
