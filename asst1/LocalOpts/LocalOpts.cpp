@@ -53,18 +53,23 @@ class FunctionInfo : public ModulePass {
                 if (constA && constB) {
                   //TODO
                 }
-                //Otherwise, if at least once is a const, see what else we can do...
-                else if (constA || constB) {
-                  if (constIntA || constIntB) {
-                    ConstantInt* constIntTerm = (constIntA) ? constIntA : constIntB; //grab the const term for this binary op
-                    Value* otherTerm = (constIntA) ? binInst->getOperand(1) : binInst->getOperand(0); //grab the other "value" term
-                    
-                    //Apply any algebraic identity opts
-                    if (binInst->getOpcode() == Instruction::Add && constIntTerm->isZero()) { // x + 0 = x
-                      std::cout << "Doing an additive identity opt..." << std::endl;
-                      ReplaceInstWithValue(binInst->getParent()->getInstList(), bbIter, otherTerm);
-                      numAlgIdentityOpts++;
-                    }
+                //Otherwise, if at least one is a constant integer, see what else we can do...
+                else if (constIntA || constIntB) {
+                  ConstantInt* constIntTerm = (constIntA) ? constIntA : constIntB; //grab the const term for this binary op
+                  Value* otherTerm = (constIntA) ? binInst->getOperand(1) : binInst->getOperand(0); //grab the other "value" term
+                  
+                  //Apply any algebraic identity opts
+                  // Additive identity: x + 0 = x
+                  if (binInst->getOpcode() == Instruction::Add && constIntTerm->isZero()) { 
+                    ReplaceInstWithValue(binInst->getParent()->getInstList(), bbIter, otherTerm);
+                    std::cout << "Optimized an instance of additive identity." << std::endl;
+                    numAlgIdentityOpts++;
+                  }
+                  // Multiplicative identity: x * 1 = 1
+                  if (binInst->getOpcode() == Instruction::Mul && constIntTerm->isOne()) { 
+                    ReplaceInstWithValue(binInst->getParent()->getInstList(), bbIter, otherTerm);
+                    std::cout << "Optimized an instance of multiplicative identity." << std::endl;
+                    numAlgIdentityOpts++;
                   }
                 }
 
@@ -74,7 +79,6 @@ class FunctionInfo : public ModulePass {
           }
         }
       }
-    
     }
 
     std::cout << "Transformations Applied:" << std::endl;

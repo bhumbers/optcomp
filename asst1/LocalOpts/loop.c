@@ -13,10 +13,3 @@ int loop (int a, int b, int c)
   }
   return ret + g;
 }
-
-//Basic additive identity test for optimizer
-int add_zero(int a) 
-{
-	return a + 0;
-}
-
