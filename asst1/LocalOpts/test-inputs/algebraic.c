@@ -28,3 +28,13 @@ int alg_identity_combo(int a)
 	return b;
 }
 
+//Constant folding tests
+int alg_const_folds() 
+{
+	int a = 6;
+	int b = a * 7; 
+	int c = (b - 1) + 3;
+	int d = a + b;
+	return d;
+}
+

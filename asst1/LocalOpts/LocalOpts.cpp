@@ -20,8 +20,7 @@ namespace {
 
 class FunctionInfo : public ModulePass {
 
-  //
-  void printFunctionInfo(Module& M) {
+  void applyLocalOptimizations(Module& M) {
     std::cout << "Module " << M.getModuleIdentifier().c_str() << std::endl;
 
     int numAlgIdentityOpts = 0;
@@ -35,7 +34,7 @@ class FunctionInfo : public ModulePass {
       std::string func_name = targetFunc->getName();
       
       //Iterate through complete module and optimize
-      //NOTE: Most of these are modeled on the built-in LLVM functionality in ConstantFold.cpp
+      //NOTE: Most of these optimizations are modeled on the built-in LLVM functionality in ConstantFold.cpp
       int count = 0;
       for (Module::iterator modIter = M.begin(); modIter != M.end(); ++modIter) {
         for (Function::iterator funIter = modIter->begin(); funIter != modIter->end(); ++funIter) {
@@ -43,17 +42,27 @@ class FunctionInfo : public ModulePass {
             //If looking at a binary operator, apply one of the opts for this question
             if (BinaryOperator* binInst = dyn_cast<BinaryOperator>(&*bbIter)) {   
                 //Extract constant integer operands if able
-                Constant* constA = dyn_cast<Constant>(binInst->getOperand(0));
-                Constant* constB = dyn_cast<Constant>(binInst->getOperand(1));
-
                 ConstantInt* constIntA = dyn_cast<ConstantInt>(binInst->getOperand(0));
                 ConstantInt* constIntB = dyn_cast<ConstantInt>(binInst->getOperand(1));
 
-                //If both operands are consts, we can do constant folding and replace with the expression w/ eval result
-                if (constA && constB) {
-                  //TODO
+                //If both operands are const ints, we can do constant folding and replace with the expression w/ eval result
+                if (constIntA && constIntB) {
+                  const APInt& constIntValA = constIntA->getValue();
+                  const APInt& constIntValB = constIntB->getValue();
+
+                  ConstantInt* evalConst = 0;
+                  switch (binInst->getOpcode()) {
+                    case Instruction::Add: evalConst = ConstantInt::get(constIntA->getContext(), constIntValA + constIntValB); break;
+                    case Instruction::Sub: evalConst = ConstantInt::get(constIntA->getContext(), constIntValA - constIntValB); break;
+                    case Instruction::Mul: evalConst = ConstantInt::get(constIntA->getContext(), constIntValA * constIntValB); break;
+                  }
+                  if (evalConst) {
+                    std::cout << "Const-folded an expression: " << binInst->getName().str() << " " << constIntValA.toString(10, true) << ", " + constIntValB.toString(10, true) << std::endl;
+                    ReplaceInstWithValue(binInst->getParent()->getInstList(), bbIter, evalConst);
+                    numAlgIdentityOpts++;
+                  }
                 }
-                //Otherwise, if at least one is a constant integer, see what else we can do...
+                //Otherwise, if at least one is a constant integer, see what else we can optimize...
                 else if (constIntA || constIntB) {
                   ConstantInt* constIntTerm = (constIntA) ? constIntA : constIntB; //grab the const term for this binary op
                   Value* otherTerm = (constIntA) ? binInst->getOperand(1) : binInst->getOperand(0); //grab the other "value" term
@@ -106,13 +115,16 @@ public:
   }
   
   virtual bool runOnModule(Module& M) {
-    std::cerr << "15745 Local Optimizations Pass\n"; // TODO: remove this.
+    std::cerr << "15-745 Local Optimizations Pass\n"; // TODO: remove this.
     for (Module::iterator MI = M.begin(), ME = M.end(); MI != ME; ++MI) {
       runOnFunction(*MI);
     }
-    printFunctionInfo(M);
+    applyLocalOptimizations(M);
     return false;
   }
+
+private:
+
 
 };
 
