@@ -18,7 +18,15 @@ int add_zero(int a)
 //Basic multiplicative identity test for optimizer
 int mul_one(int a) 
 {
+	int b = 1 * a;
 	return a * 1;
+}
+
+int div_one(int a) 
+{
+	int b = a / 1; 
+	int c = 1 / a; //shouldn't be optimized... verify this!
+	return a / 1;
 }
 
 //Combination of a few identities
@@ -36,5 +44,10 @@ int alg_const_folds()
 	int c = (b - 1) + 3;
 	int d = a + b;
 	return d;
+}
+
+int undef_var_test() {
+	int a;
+	return a + 1;
 }
 

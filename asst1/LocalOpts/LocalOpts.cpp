@@ -68,22 +68,37 @@ class FunctionInfo : public ModulePass {
                   Value* otherTerm = (constIntA) ? binInst->getOperand(1) : binInst->getOperand(0); //grab the other "value" term
                   
                   //Apply any algebraic identity opts
-                  // Additive identity: x + 0 = x
-                  if (binInst->getOpcode() == Instruction::Add && constIntTerm->isZero()) { 
-                    ReplaceInstWithValue(binInst->getParent()->getInstList(), bbIter, otherTerm);
-                    std::cout << "Optimized an instance of additive identity." << std::endl;
-                    numAlgIdentityOpts++;
+                  switch (binInst->getOpcode()) {
+                    case Instruction::Add:
+                      // Additive identity: x + 0 = x
+                      if (constIntTerm->isZero()) {
+                        ReplaceInstWithValue(binInst->getParent()->getInstList(), bbIter, otherTerm);
+                        std::cout << "Optimized an instance of additive identity." << std::endl;
+                        numAlgIdentityOpts++;
+                      }
+                      break;
+                    case Instruction::Mul:
+                      // Multiplicative identity: x * 1 = 1
+                      if (constIntTerm->isOne()) {
+                        ReplaceInstWithValue(binInst->getParent()->getInstList(), bbIter, otherTerm);
+                        std::cout << "Optimized an instance of multiplicative identity." << std::endl;
+                        numAlgIdentityOpts++;
+                      }
+                      break;
+                    case Instruction::UDiv:
+                    case Instruction::SDiv:
+                      //Division identity: x / 1 = x
+                      //(Note: not commutative... left term must be variable & right term to be 1)
+                      if (constIntB && constIntB->isOne()) {
+                        ReplaceInstWithValue(binInst->getParent()->getInstList(), bbIter, binInst->getOperand(0));
+                        std::cout << "Optimized an instance of division identity." << std::endl;
+                        numAlgIdentityOpts++;
+                      }
+                      break;
+                    }
                   }
-                  // Multiplicative identity: x * 1 = 1
-                  if (binInst->getOpcode() == Instruction::Mul && constIntTerm->isOne()) { 
-                    ReplaceInstWithValue(binInst->getParent()->getInstList(), bbIter, otherTerm);
-                    std::cout << "Optimized an instance of multiplicative identity." << std::endl;
-                    numAlgIdentityOpts++;
-                  }
-                }
 
                 //TODO: Handle strength reductions
-                //TODO: Handle floating point identities & const folding?
             }
           }
         }
