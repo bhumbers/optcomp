@@ -13,3 +13,21 @@ int loop (int a, int b, int c)
   }
   return ret + g;
 }
+int Fact( int a)
+{
+    if(a == 1)
+        return 1;
+    else
+    {
+        return (a * (Fact(a-1)));
+    }
+}
+
+int var_ar(int a, ...) {
+    return 42 + a;
+}
+
+void call()
+{
+    Fact(5);
+}
