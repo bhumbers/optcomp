@@ -97,7 +97,20 @@ class FunctionInfo : public ModulePass {
                       break;
                     }
                   }
-
+                //STRENGTH Reduction  
+                if (constIntA || constIntB) 
+		            {
+                ConstantInt* constIntTerm = (constIntA) ? constIntA : constIntB; //grab the const term for this binary op
+                Value* otherTerm = (constIntA) ? binInst->getOperand(1) : binInst->getOperand(0); //grab the other "value" term	
+		          //Instruction* newInst = new Instruction(Int32Type, 0, "flag", Bb);
+		        //  ConstantExpr* new(Type::FloatTyID,;
+		
+		//Strength Reduction for identifying multiplication by 2 and converting to left shift		
+		              if (binInst->getOpcode() == Instruction::Mul  && constIntTerm->getValue().isPowerOf2())
+		              { 
+		                //ReplaceInstWithInst(binInst->getParent()->getInstList(),bbIter, new Instruction(Type::FloatTyID, 0, "shl"));
+		              }		 
+		          }
                 //TODO: Handle strength reductions
             }
           }
