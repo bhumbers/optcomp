@@ -98,7 +98,26 @@ class FunctionInfo : public ModulePass {
                     }
                   }
 
+                //Handle strength reductions where possible
+                if (constIntA || constIntB)
+                {
+                  ConstantInt* constIntTerm = (constIntA) ? constIntA : constIntB; //grab the const term for this binary op
+                  Value* otherTerm = (constIntA) ? binInst->getOperand(1) : binInst->getOperand(0); //grab the other "value" term
+                  //Strength Reduction for identifying multiplication by 2 and converting to left shift
+                  if (binInst->getOpcode() == Instruction::Mul && constIntTerm->getValue().isPowerOf2())
+                  { 
+                    //TODO: Handle correct power of two shift
+                    const int64_t constIntVal = constIntTerm->getSExtValue();
+                    Value* shiftVal = ConstantInt::get(constIntTerm->getType(), log2(constIntVal));
+
+                    std::cout << "About to apply a bitshift: " << constIntVal << ", " << log2(constIntVal) << std::endl;
+
+                    ReplaceInstWithInst(binInst->getParent()->getInstList(),bbIter, BinaryOperator::Create(Instruction::Shl, otherTerm, shiftVal, "shl", (Instruction*)(0)));
+                    numStrengthRedOpts++;
+                  }
+                }
                 //TODO: Handle strength reductions
+                //TODO: Handle floating point identities & const folding?
             }
           }
         }
