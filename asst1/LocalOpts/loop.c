@@ -13,7 +13,8 @@ int loop (int a, int b, int c)
   }
   return ret + g;
 }
-int Fact( int a)
+
+int Fact(int a)
 {
     if(a == 1)
         return 1;
@@ -31,3 +32,4 @@ void call()
 {
     Fact(5);
 }
+
