@@ -61,7 +61,7 @@ class FunctionInfo : public ModulePass {
                 if (evalConst) {
                   std::cout << "Const-folded an expression: " << binInst->getName().str() << " " << constIntValA.toString(10, true) << ", " + constIntValB.toString(10, true) << std::endl;
                   ReplaceInstWithValue(binInst->getParent()->getInstList(), bbIter, evalConst);
-                  numAlgIdentityOpts++;
+                  numConstFoldOpts++;
                 }
               }
               //Otherwise, if at least one is a constant integer, see what else we can optimize...
