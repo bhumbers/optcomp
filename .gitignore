@@ -15,3 +15,5 @@
 # LLVM output
 *.ll
 *.bc
+
+*.c~
