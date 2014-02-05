@@ -14,10 +14,56 @@
 #include "llvm/ADT/ValueMap.h"
 #include "llvm/Support/CFG.h"
 
+#include <list>
+
 namespace llvm {
 
-// Add definitions (and code, depending on your strategy) for your dataflow
-// abstraction here.
+/** Used to run generic dataflow analysis passes
+Inputs are the necessary pass-specific parts of a dataflow pass. 
+Output is semi-lattice results at each in & out point per basic block in the module.
+*/
+class DataFlow {
+  enum Direction {
+    FORWARD,
+    BACKWARD
+  };
+
+  struct DataFlowResultForBlock {
+    BitVector in;
+    BitVector out;
+  };
+
+  public: 
+    DataFlow( BitVector domain, 
+              Direction direction,
+              BitVector (*meetFunc)(std::list<BitVector>),
+              BitVector (*transferFunc)(BitVector, BasicBlock* block),
+              BitVector boundaryCond,
+              BitVector initInteriorCond
+              )
+    {
+      this->domain = domain;
+      this->direction = direction;
+      this->meetFunc = meetFunc;
+      this->transferFunc = transferFunc;
+      this->boundaryCond = boundaryCond;
+      this->initInteriorCond = initInteriorCond;
+    }
+
+    //TODO: add function to run anlysis on a given Module or Function & make results available (in/out bitvectors per block)
+    
+
+  protected:
+    BitVector domain;
+    Direction direction;
+    BitVector (*meetFunc)(std::list<BitVector>);
+    BitVector (*transferFunc)(BitVector, BasicBlock* block);
+    BitVector boundaryCond;
+    BitVector initInteriorCond;
+
+    //Results: Mapping from basic blocks to the IN and OUT sets for each after analysis converges
+    DenseMap<BasicBlock*, DataFlowResultForBlock> results;
+};
 
 // Prints a representation of F to raw_ostream O.
 void ExampleFunctionPrinter(raw_ostream& O, const Function& F);

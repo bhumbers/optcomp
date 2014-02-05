@@ -1,11 +1,15 @@
 all: liveness.so reaching-definitions.so
 
+#We'll want to force clang usage rather than g++
+CXX=clang
+
+
 CXXFLAGS = -rdynamic $(shell llvm-config --cxxflags) -g -O0
 
 dataflow.o: dataflow.cpp dataflow.h
 
 %.so: %.o dataflow.o
-	clang -dylib -flat_namespace -shared $^ -o $@
+	$(CXX) -dylib -flat_namespace -shared -fcolor-diagnostics $^ -o $@
 
 clean:
 	rm -f *.o *~ *.so
