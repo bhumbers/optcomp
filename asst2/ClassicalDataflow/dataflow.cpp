@@ -8,8 +8,8 @@
 
 namespace llvm {
 
-DenseMap<BasicBlock*, DataFlow::DataFlowResultForBlock> DataFlow::run(Function& F) {
-  DenseMap<BasicBlock*, DataFlow::DataFlowResultForBlock> results;
+DenseMap<BasicBlock*, DataFlowResultForBlock> DataFlow::run(Function& F) {
+  DenseMap<BasicBlock*, DataFlowResultForBlock> results;
 
   //TODO: Would it make sense to use a linear vector of blocks and use "basic block indices" rather
   //than a map of BasicBlock pointers in order to do block references for dataflow?

@@ -18,25 +18,24 @@
 
 namespace llvm {
 
+struct DataFlowResultForBlock {
+  BitVector in;
+  BitVector out;
+
+  DataFlowResultForBlock() {}
+  DataFlowResultForBlock(BitVector in, BitVector out) : in(in), out(out) {}
+};
+
 /** Used to run generic dataflow analysis passes
 Inputs are the necessary pass-specific parts of a dataflow pass. 
 Output is semi-lattice results at each in & out point per basic block in the module.
 */
 class DataFlow {
   public:
-	enum Direction {
-		FORWARD,
-		BACKWARD
-	};
-
-	struct DataFlowResultForBlock {
-		BitVector in;
-		BitVector out;
-
-    DataFlowResultForBlock();
-    DataFlowResultForBlock(BitVector in, BitVector out) : in(in), out(out) {}
-	};
-
+    enum Direction {
+      FORWARD,
+      BACKWARD
+    };
 
     DataFlow( BitVector domain, 
               Direction direction,

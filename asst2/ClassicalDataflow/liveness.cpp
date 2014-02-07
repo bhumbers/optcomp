@@ -38,7 +38,7 @@ class Liveness : public FunctionPass {
     BitVector initInteriorCond;
 
     DataFlow flow(BitVector(), DataFlow::BACKWARD, livenessMeetFunc, livenessTransferFunc, boundaryCond, initInteriorCond);
-    DenseMap<BasicBlock*, DataFlow::DataFlowResultForBlock> dataflowResults = flow.run(F);
+    DenseMap<BasicBlock*, DataFlowResultForBlock> dataflowResults = flow.run(F);
 
     //TODO: Use dataflow results to determine liveness at each program point, inside each block
 
