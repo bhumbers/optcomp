@@ -20,3 +20,6 @@
 
 #Misc
 asst2/asst2.pdf
+
+#Qt Creator IDE stuff
+*.creator.user
