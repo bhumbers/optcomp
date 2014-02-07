@@ -12,6 +12,26 @@ using namespace llvm;
 
 namespace {
 
+//////////////////////////////////////////////////////////////////////////////////////////////
+//Dataflow analysis
+class ReachingDefinitionsDataFlow : public DataFlow {
+
+  protected:
+    BitVector applyMeet(std::vector<BitVector> meetInputs) {
+      BitVector meetResult;
+
+      //TODO
+
+      return meetResult;
+    }
+
+    BitVector applyTransfer(const BitVector& value, DenseMap<Value*, int> domainEntryToValueIdx, BasicBlock* block) {
+      //TODO
+      return value;
+    }
+};
+//////////////////////////////////////////////////////////////////////////////////////////////
+
 class ReachingDefinitions : public FunctionPass {
  public:
   static char ID;
@@ -19,8 +39,17 @@ class ReachingDefinitions : public FunctionPass {
   ReachingDefinitions() : FunctionPass(ID) { }
 
   virtual bool runOnFunction(Function& F) {
-	  DataFlow flow(BitVector(), DataFlow::BACKWARD, 0, 0, BitVector(), BitVector());
-	      flow.ExampleFunctionPrinter(errs(), F);
+    //TODO: Determine domain
+    std::vector<Value*> domain;
+
+    int numVars = domain.size();
+
+    //Determine boundary & interior initial dataflow values
+    BitVector boundaryCond(numVars);
+    BitVector initInteriorCond(numVars);
+
+    ReachingDefinitionsDataFlow flow;
+    DenseMap<BasicBlock*, DataFlowResultForBlock> dataflowResults = flow.run(F, domain, DataFlow::FORWARD, boundaryCond, initInteriorCond);
 
     // Did not modify the incoming Function.
     return false;

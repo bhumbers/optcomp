@@ -5,6 +5,8 @@
 #include "llvm/IR/Function.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/InstIterator.h"
+#include "llvm/ADT/SmallPtrSet.h"
 
 #include "dataflow.h"
 
@@ -13,28 +15,66 @@ using namespace llvm;
 namespace {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
-//Dataflow analysis functions
-BitVector livenessMeetFunc(std::vector<BitVector> meetInputs) {
-  BitVector meetResult;
+//Dataflow analysis
+class LivenessDataFlow : public DataFlow {
 
-  //Meet op = union of inputs
-  if (!meetInputs.empty()) {
-    for (int i = 0; i < meetInputs.size(); i++) {
-      if (i == 0)
-        meetResult = meetInputs[i];
-      else
-        meetResult |= meetInputs[i];
+  protected:
+    BitVector applyMeet(std::vector<BitVector> meetInputs) {
+      BitVector meetResult;
+
+      //Meet op = union of inputs
+      if (!meetInputs.empty()) {
+        for (int i = 0; i < meetInputs.size(); i++) {
+          if (i == 0)
+            meetResult = meetInputs[i];
+          else
+            meetResult |= meetInputs[i];
+        }
+      }
+
+      return meetResult;
     }
-  }
 
-  return meetResult;
-}
+    BitVector applyTransfer(const BitVector& value, DenseMap<Value*, int> domainEntryToValueIdx, BasicBlock* block) {
+      //First, calculate set of locally exposed uses and set of defined variables in this block
+      int domainSize = domainEntryToValueIdx.size();
+      BitVector defSet(domainSize);
+      BitVector useSet(domainSize);
+      for (BasicBlock::iterator instruction = block->begin(); instruction != block->end(); ++instruction) {
+        //Locally exposed uses (by non-phi instructions)
+        if (!isa<PHINode>(instruction)) {
+          User::op_iterator operand, opEnd;
+          for (operand = instruction->op_begin(), opEnd = instruction->op_end(); operand != opEnd; ++operand) {
+            Value *val = *operand;
+            if (isa<Instruction>(val) || isa<Argument>(val)) {
+              int valIdx = domainEntryToValueIdx[val];
 
-BitVector livenessTransferFunc(BitVector value, BasicBlock* block) {
-  //TODO
-  return value;
-}
+              //Only locally exposed use if not defined earlier in this block
+              if (!defSet[valIdx])
+                useSet.set(valIdx);
+            }
+          }
+        }
 
+        //Definitions
+        DenseMap<Value*, int>::const_iterator iter = domainEntryToValueIdx.find(instruction);
+        if (iter != domainEntryToValueIdx.end())
+          defSet.set((*iter).second);
+      }
+
+      //Then, apply liveness transfer function: Y = UseSet \union (X - DefSet)
+      BitVector outVal = defSet;
+      errs() << bitVectorToString(outVal) << "\n";
+      outVal.flip();
+      errs() << bitVectorToString(outVal) << "\n";
+      outVal &= value;
+      errs() << bitVectorToString(outVal) << "\n";
+      outVal |= useSet;
+      errs() << bitVectorToString(outVal) << "\n";
+
+      return outVal;
+    }
+};
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 class Liveness : public FunctionPass {
@@ -44,18 +84,47 @@ class Liveness : public FunctionPass {
   Liveness() : FunctionPass(ID) { }
 
   virtual bool runOnFunction(Function& F) {
-//    int numVars =
+    //Set domain = variables in the function
+    std::vector<Value*> domain;
+    for (Function::arg_iterator arg = F.arg_begin(); arg != F.arg_end(); ++arg)
+      domain.push_back(arg);
+    for (inst_iterator instruction = inst_begin(F), e = inst_end(F); instruction != e; ++instruction) {
+      //If instruction has a nonempty name, then it defines a variable for our domain
+      //(TODO: I'm not really sure how correct this is at all... is there a better way to identify "definining" instructions?)
+      if (!instruction->getName().empty())
+        domain.push_back(&*instruction);
+    }
+
+    //DEBUG: Print out domain entry names
+    errs() << "Domain: ";
+    for (int i = 0; i < domain.size(); i++) {
+      errs() << domain[i]->getName();
+      errs() << ", ";
+    }
+    errs() << "\n";
+
+    int numVars = domain.size();
 
     //Determine boundary & interior initial dataflow values
-    BitVector boundaryCond;
-    BitVector initInteriorCond;
+    BitVector boundaryCond(numVars);
+    BitVector initInteriorCond(numVars);
 
-    DataFlow flow(BitVector(), DataFlow::BACKWARD, livenessMeetFunc, livenessTransferFunc, boundaryCond, initInteriorCond);
-    DenseMap<BasicBlock*, DataFlowResultForBlock> dataflowResults = flow.run(F);
+    //Get dataflow values at IN and OUT points of each block
+    LivenessDataFlow flow;
+    DenseMap<BasicBlock*, DataFlowResultForBlock> dataFlowResults = flow.run(F, domain, DataFlow::BACKWARD, boundaryCond, initInteriorCond);
 
-    //Now, use dataflow results to determine liveness at each program point, inside each block
+    //DEBUG: Output in/out point values by block
+    for (DenseMap<BasicBlock*, DataFlowResultForBlock>::iterator dataFlowResult = dataFlowResults.begin();
+         dataFlowResult != dataFlowResults.end();
+         ++dataFlowResult) {
+      errs() << (*dataFlowResult).first->getName() << "\n";
+      errs() << "In: " << bitVectorToString((*dataFlowResult).second.in) << "\n";
+      errs() << "Out: " << bitVectorToString((*dataFlowResult).second.out) << "\n";
+    }
+
+    //Now, use dataflow results to determine liveness at program points within each block
     for (Function::iterator basicBlock = F.begin(); basicBlock != F.end(); ++basicBlock) {
-      DataFlowResultForBlock blockLivenessVals = dataflowResults[basicBlock];
+      DataFlowResultForBlock blockLivenessVals = dataFlowResults[basicBlock];
 
       //Initialize liveness at end of block
       BitVector livenessVals = blockLivenessVals.out;
@@ -67,7 +136,7 @@ class Liveness : public FunctionPass {
           //TODO
         }
         else {
-          //TODO: Remove vars from live set when if this is their defining inst
+          //TODO: Remove vars from live set if this is their defining inst
 
           //Add vars to live set when used as an operand
           for (Instruction::const_op_iterator operand = instruction->op_begin(), opEnd = instruction->op_end();

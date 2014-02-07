@@ -4,11 +4,24 @@
 
 #include "dataflow.h"
 
+#include "llvm/Support/raw_ostream.h"
+
 #include "llvm/Support/CFG.h"
 
 namespace llvm {
 
-DenseMap<BasicBlock*, DataFlowResultForBlock> DataFlow::run(Function& F) {
+std::string bitVectorToString(BitVector bv) {
+  std::string str(bv.size(), '0');
+  for (int i = 0; i < bv.size(); i++)
+    str[i] = bv[i] ? '1' : '0';
+  return str;
+}
+
+DenseMap<BasicBlock*, DataFlowResultForBlock> DataFlow::run(Function& F,
+                                                            std::vector<Value*> domain,
+                                                            Direction direction,
+                                                            BitVector boundaryCond,
+                                                            BitVector initInteriorCond) {
   DenseMap<BasicBlock*, DataFlowResultForBlock> results;
 
   //TODO: Would it make sense to use a linear vector of blocks and use "basic block indices" rather
@@ -16,6 +29,12 @@ DenseMap<BasicBlock*, DataFlowResultForBlock> DataFlow::run(Function& F) {
   //Might be cleaner and/or faster... depends on how efficient DenseMap is.
 
   bool analysisConverged = false;
+
+  //Create mapping from domain entries to linear indices
+  //(simplifies updating bitvector entries given a particular domain element)
+  DenseMap<Value*, int> domainEntryToValueIdx;
+  for (int i = 0; i < domain.size(); i++)
+    domainEntryToValueIdx[domain[i]] = i;
 
   //Set initial val for boundary block (depends on direction of analysis)
   BasicBlock* boundaryBlock = (direction == FORWARD) ? &F.front() : &F.back();
@@ -49,19 +68,24 @@ DenseMap<BasicBlock*, DataFlowResultForBlock> DataFlow::run(Function& F) {
   while (!analysisConverged) {
     analysisConverged = true; //assume converged until proven otherwise during this iteration
 
+    //TODO: if analysis is backwards, may want to iterate from back-to-front of blocks list
     for (Function::iterator basicBlock = F.begin(); basicBlock != F.end(); ++basicBlock) {
       DataFlowResultForBlock& blockVals = results[basicBlock];
 
       //Store old output before applying this analysis pass to the block (depends on analysis dir)
-      BitVector& oldPassOut = (direction == FORWARD) ? blockVals.out : blockVals.in;
+      BitVector oldPassOut = (direction == FORWARD) ? blockVals.out : blockVals.in;
 
       //Apply meet operator to generate updated input set for this block
       BitVector& passIn = (direction == FORWARD) ? blockVals.in : blockVals.out;
-      passIn = meetFunc(meetInputsByBlock[basicBlock]);
+      passIn = applyMeet(meetInputsByBlock[basicBlock]);
 
       //Apply transfer function to input set in order to get output set for this iteration
       BitVector& passOut = (direction == FORWARD) ? blockVals.out : blockVals.in;
-      passOut = transferFunc(passIn, basicBlock);
+      passOut = applyTransfer(passIn, domainEntryToValueIdx, basicBlock);
+
+      //DEBUGGING
+      errs() << "Old passOut: " << bitVectorToString(oldPassOut) << "\n";
+      errs() << "New passOut: " << bitVectorToString(passOut) << "\n";
 
       //Update convergence: if the output set for this block has changed, then we've not converged for this iteration
       if (analysisConverged && passOut != oldPassOut)

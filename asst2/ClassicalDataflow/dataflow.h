@@ -18,6 +18,9 @@
 
 namespace llvm {
 
+//Util to create string representation of given BitVector
+std::string bitVectorToString(BitVector bv);
+
 struct DataFlowResultForBlock {
   BitVector in;
   BitVector out;
@@ -26,9 +29,8 @@ struct DataFlowResultForBlock {
   DataFlowResultForBlock(BitVector in, BitVector out) : in(in), out(out) {}
 };
 
-/** Used to run generic dataflow analysis passes
-Inputs are the necessary pass-specific parts of a dataflow pass. 
-Output is semi-lattice results at each in & out point per basic block in the module.
+/** Base interface for running dataflow analysis passes.
+ * Must be subclassed with pass-specific logic in order to be used.
 */
 class DataFlow {
   public:
@@ -37,38 +39,26 @@ class DataFlow {
       BACKWARD
     };
 
-    DataFlow( BitVector domain, 
-              Direction direction,
-              BitVector (*meetFunc)(std::vector<BitVector>),
-              BitVector (*transferFunc)(BitVector, BasicBlock*),
-              BitVector boundaryCond,
-              BitVector initInteriorCond
-              )
-    {
-      this->domain = domain;
-      this->direction = direction;
-      this->meetFunc = meetFunc;
-      this->transferFunc = transferFunc;
-      this->boundaryCond = boundaryCond;
-      this->initInteriorCond = initInteriorCond;
-    }
-
-    /** Run anlysis on a given Module or Function & make results available (in/out bitvectors per block)
+    /** Run this dataflow analysis on function using given parameters.
      * Returns a mapping from basic blocks to the IN and OUT sets for each after analysis converges */
-    DenseMap<BasicBlock*, DataFlowResultForBlock> run(Function& F);
+    DenseMap<BasicBlock*, DataFlowResultForBlock> run(Function& F,
+                                                      std::vector<Value*> domain,
+                                                      Direction direction,
+                                                      BitVector boundaryCond,
+                                                      BitVector initInteriorCond);
 
-    // Prints a representation of F to raw_ostream O.
+    /** Prints a representation of F to raw_ostream O. */
     void ExampleFunctionPrinter(raw_ostream& O, const Function& F);
 
-  protected:
-    BitVector domain;
-    Direction direction;
-    BitVector (*meetFunc)(std::vector<BitVector>);
-    BitVector (*transferFunc)(BitVector, BasicBlock*);
-    BitVector boundaryCond;
-    BitVector initInteriorCond;
-
     void PrintInstructionOps(raw_ostream& O, const Instruction* I);
+
+  protected:
+    /** Meet operator behavior; specific to the subclassing data flow */
+    virtual BitVector applyMeet(std::vector<BitVector> meetInputs) = 0;
+
+    /** Transfer function behavior; specific to a subclassing data flow
+     * domainEntryToValueIdx provides mapping from domain elements to the linear bitvector index for that element. */
+    virtual BitVector applyTransfer(const BitVector& value, DenseMap<Value*, int> domainEntryToValueIdx, BasicBlock* block) = 0;
 };
 
 }
