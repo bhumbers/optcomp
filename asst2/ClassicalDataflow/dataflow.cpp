@@ -28,9 +28,9 @@ DenseMap<BasicBlock*, DataFlowResultForBlock> DataFlow::run(Function& F) {
   }
 
   //Generate meet input list for each block (depending on direction of analysis)
-  DenseMap<BasicBlock*, std::list<BitVector> > meetInputsByBlock;
+  DenseMap<BasicBlock*, std::vector<BitVector> > meetInputsByBlock;
   for (Function::iterator basicBlock = F.begin(); basicBlock != F.end(); ++basicBlock) {
-      std::list<BitVector> meetInputs;
+      std::vector<BitVector> meetInputs;
       switch (direction) {
         case FORWARD:
           for (pred_iterator predBlock = pred_begin(basicBlock), E = pred_end(basicBlock); predBlock != E; ++predBlock)
@@ -39,7 +39,7 @@ DenseMap<BasicBlock*, DataFlowResultForBlock> DataFlow::run(Function& F) {
         case BACKWARD:
           for (succ_iterator succBlock = succ_begin(basicBlock), E = succ_end(basicBlock); succBlock != E; ++succBlock)
             meetInputs.push_back(results[*succBlock].in);
-            break;
+          break;
       }
 
       meetInputsByBlock[basicBlock] = meetInputs;
@@ -56,7 +56,7 @@ DenseMap<BasicBlock*, DataFlowResultForBlock> DataFlow::run(Function& F) {
       BitVector& oldPassOut = (direction == FORWARD) ? blockVals.out : blockVals.in;
 
       //Apply meet operator to generate updated input set for this block
-      BitVector& passIn = (direction == FORWARD) ? blockVals.out : blockVals.in;
+      BitVector& passIn = (direction == FORWARD) ? blockVals.in : blockVals.out;
       passIn = meetFunc(meetInputsByBlock[basicBlock]);
 
       //Apply transfer function to input set in order to get output set for this iteration

@@ -14,7 +14,7 @@
 #include "llvm/ADT/ValueMap.h"
 #include "llvm/Support/CFG.h"
 
-#include <list>
+#include <vector>
 
 namespace llvm {
 
@@ -39,7 +39,7 @@ class DataFlow {
 
     DataFlow( BitVector domain, 
               Direction direction,
-              BitVector (*meetFunc)(std::list<BitVector>),
+              BitVector (*meetFunc)(std::vector<BitVector>),
               BitVector (*transferFunc)(BitVector, BasicBlock*),
               BitVector boundaryCond,
               BitVector initInteriorCond
@@ -63,7 +63,7 @@ class DataFlow {
   protected:
     BitVector domain;
     Direction direction;
-    BitVector (*meetFunc)(std::list<BitVector>);
+    BitVector (*meetFunc)(std::vector<BitVector>);
     BitVector (*transferFunc)(BitVector, BasicBlock*);
     BitVector boundaryCond;
     BitVector initInteriorCond;
