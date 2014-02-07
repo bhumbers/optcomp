@@ -19,7 +19,8 @@ class ReachingDefinitions : public FunctionPass {
   ReachingDefinitions() : FunctionPass(ID) { }
 
   virtual bool runOnFunction(Function& F) {
-    ExampleFunctionPrinter(errs(), F);
+	  DataFlow flow(BitVector(), DataFlow::BACKWARD, 0, 0, BitVector(), BitVector());
+	      flow.ExampleFunctionPrinter(errs(), F);
 
     // Did not modify the incoming Function.
     return false;

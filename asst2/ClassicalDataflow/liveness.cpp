@@ -12,6 +12,20 @@ using namespace llvm;
 
 namespace {
 
+//////////////////////////////////////////////////////////////////////////////////////////////
+//Dataflow analysis functions
+BitVector livenessMeetFunc(std::list<BitVector> meetInputs) {
+  //TODO
+  return BitVector();
+};
+
+BitVector livenessTransferFunc(BitVector value, BasicBlock* block) {
+  //TODO
+  return BitVector();
+};
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
 class Liveness : public FunctionPass {
  public:
   static char ID;
@@ -19,7 +33,17 @@ class Liveness : public FunctionPass {
   Liveness() : FunctionPass(ID) { }
 
   virtual bool runOnFunction(Function& F) {
-    ExampleFunctionPrinter(errs(), F);
+    //TODO: Properly determine boundary & interior initial dataflow values
+    BitVector boundaryCond;
+    BitVector initInteriorCond;
+
+    DataFlow flow(BitVector(), DataFlow::BACKWARD, livenessMeetFunc, livenessTransferFunc, boundaryCond, initInteriorCond);
+    DenseMap<BasicBlock*, DataFlow::DataFlowResultForBlock> dataflowResults = flow.run(F);
+
+    //TODO: Use dataflow results to determine liveness at each program point, inside each block
+
+
+    //flow.ExampleFunctionPrinter(errs(), F);
 
     // Did not modify the incoming Function.
     return false;
@@ -31,6 +55,8 @@ class Liveness : public FunctionPass {
 
  private:
 };
+
+
 
 char Liveness::ID = 0;
 RegisterPass<Liveness> X("cd-liveness", "15745 Liveness");
