@@ -42,19 +42,24 @@ class LivenessDataFlow : public DataFlow {
       BitVector useSet(domainSize);
       for (BasicBlock::iterator instruction = block->begin(); instruction != block->end(); ++instruction) {
         //Locally exposed uses (by non-phi instructions)
-        if (!isa<PHINode>(instruction)) {
-          User::op_iterator operand, opEnd;
-          for (operand = instruction->op_begin(), opEnd = instruction->op_end(); operand != opEnd; ++operand) {
-            Value *val = *operand;
-            if (isa<Instruction>(val) || isa<Argument>(val)) {
-              int valIdx = domainEntryToValueIdx[val];
 
-              //Only locally exposed use if not defined earlier in this block
-              if (!defSet[valIdx])
-                useSet.set(valIdx);
-            }
+        //TODO post-A2: Correctly handle phi-node quirks for SSA
+        //(in particular, need to special-case so that liveness only propagates back to source branch for each phi operand)
+        //See for details: http://www.cs.cmu.edu/afs/cs/academic/class/15745-s09/www/assignments/1/P1.pdf
+
+//        if (!isa<PHINode>(instruction)) {
+        User::op_iterator operand, opEnd;
+        for (operand = instruction->op_begin(), opEnd = instruction->op_end(); operand != opEnd; ++operand) {
+          Value *val = *operand;
+          if (isa<Instruction>(val) || isa<Argument>(val)) {
+            int valIdx = domainEntryToValueIdx[val];
+
+            //Only locally exposed use if not defined earlier in this block
+            if (!defSet[valIdx])
+              useSet.set(valIdx);
           }
         }
+//        }
 
         //Definitions
         DenseMap<Value*, int>::const_iterator iter = domainEntryToValueIdx.find(instruction);
@@ -117,9 +122,9 @@ class Liveness : public FunctionPass {
     for (DenseMap<BasicBlock*, DataFlowResultForBlock>::iterator dataFlowResult = dataFlowResults.begin();
          dataFlowResult != dataFlowResults.end();
          ++dataFlowResult) {
-      errs() << (*dataFlowResult).first->getName() << "\n";
-      errs() << "In: " << bitVectorToString((*dataFlowResult).second.in) << "\n";
-      errs() << "Out: " << bitVectorToString((*dataFlowResult).second.out) << "\n";
+      errs() << "Dataflow results for block " << (*dataFlowResult).first->getName() << ":\n";
+      errs() << "  In:  " << bitVectorToString((*dataFlowResult).second.in) << "\n";
+      errs() << "  Out: " << bitVectorToString((*dataFlowResult).second.out) << "\n";
     }
 
     //Now, use dataflow results to determine liveness at program points within each block

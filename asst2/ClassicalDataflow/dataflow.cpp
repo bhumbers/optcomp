@@ -77,7 +77,9 @@ DenseMap<BasicBlock*, DataFlowResultForBlock> DataFlow::run(Function& F,
 
       //Apply meet operator to generate updated input set for this block
       BitVector& passIn = (direction == FORWARD) ? blockVals.in : blockVals.out;
-      passIn = applyMeet(meetInputsByBlock[basicBlock]);
+      std::vector<BitVector> meetInputs = meetInputsByBlock[basicBlock];
+      if (!meetInputs.empty())
+        passIn = applyMeet(meetInputs);
 
       //Apply transfer function to input set in order to get output set for this iteration
       BitVector& passOut = (direction == FORWARD) ? blockVals.out : blockVals.in;
