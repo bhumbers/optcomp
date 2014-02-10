@@ -43,25 +43,35 @@ class LivenessDataFlow : public DataFlow {
       BitVector defSet(domainSize);
       BitVector useSet(domainSize);
       for (BasicBlock::iterator instruction = block->begin(); instruction != block->end(); ++instruction) {
-        //Locally exposed uses (by non-phi instructions)
+        //Locally exposed uses
+        //Phi node handling: Add operands to predecessor-specific value set
+        if (PHINode* phiNode = dyn_cast<PHINode>(&*instruction)) {
+          for (int incomingIdx = 0; incomingIdx < phiNode->getNumIncomingValues(); incomingIdx++) {
+            Value* val = phiNode->getIncomingValue(incomingIdx);
+            if (isa<Instruction>(val) || isa<Argument>(val)) {
+              int valIdx = domainEntryToValueIdx[val];
 
-        //TODO post-A2: Correctly handle phi-node quirks for SSA
-        //(in particular, need to special-case so that liveness only propagates back to source branch for each phi operand)
-        //See for details: http://www.cs.cmu.edu/afs/cs/academic/class/15745-s09/www/assignments/1/P1.pdf
-
-//        if (!isa<PHINode>(instruction)) {
-        User::op_iterator operand, opEnd;
-        for (operand = instruction->op_begin(), opEnd = instruction->op_end(); operand != opEnd; ++operand) {
-          Value *val = *operand;
-          if (isa<Instruction>(val) || isa<Argument>(val)) {
-            int valIdx = domainEntryToValueIdx[val];
-
-            //Only locally exposed use if not defined earlier in this block
-            if (!defSet[valIdx])
-              useSet.set(valIdx);
+              BasicBlock* incomingBlock = phiNode->getIncomingBlock(incomingIdx);
+              if (transfer.predSpecificValues.find(incomingBlock) == transfer.predSpecificValues.end())
+                transfer.predSpecificValues[incomingBlock] = BitVector(domainSize);
+              transfer.predSpecificValues[incomingBlock].set(valIdx);
+            }
           }
         }
-//        }
+        //Non-phi node handling: Add operands to general use set
+        else {
+          User::op_iterator operand, opEnd;
+          for (operand = instruction->op_begin(), opEnd = instruction->op_end(); operand != opEnd; ++operand) {
+            Value* val = *operand;
+            if (isa<Instruction>(val) || isa<Argument>(val)) {
+              int valIdx = domainEntryToValueIdx[val];
+
+              //Only locally exposed use if not defined earlier in this block
+              if (!defSet[valIdx])
+                useSet.set(valIdx);
+            }
+          }
+        }
 
         //Definitions
         DenseMap<Value*, int>::const_iterator iter = domainEntryToValueIdx.find(instruction);

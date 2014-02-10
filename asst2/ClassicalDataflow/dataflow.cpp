@@ -83,40 +83,44 @@ DenseMap<BasicBlock*, DataFlowResultForBlock> DataFlow::run(Function& F,
       DataFlowResultForBlock& blockVals = results[basicBlock];
 
       //Store old output before applying this analysis pass to the block (depends on analysis dir)
-      BitVector* oldPassOut = (direction == FORWARD) ? &blockVals.out : &blockVals.in;
+      DataFlowResultForBlock oldBlockVals = blockVals;
+      BitVector oldPassOut = (direction == FORWARD) ? blockVals.out : blockVals.in;
 
       //If any analysis predecessors have outputs ready, apply meet operator to generate updated input set for this block
-      BitVector* passIn = (direction == FORWARD) ? &blockVals.in : &blockVals.out;
+      BitVector* passInPtr = (direction == FORWARD) ? &blockVals.in : &blockVals.out;
       std::vector<BasicBlock*> analysisPreds = analysisPredsByBlock[basicBlock];
       std::vector<BitVector> meetInputs;
       //Iterate over analysis predecessors in order to generate meet inputs for this block
       for (std::vector<BasicBlock*>::iterator analysisPred = analysisPreds.begin(); analysisPred < analysisPreds.end(); ++analysisPred) {
         DataFlowResultForBlock& predVals = results[*analysisPred];
         BitVector meetInput = predVals.currTransferResult.baseValue;
-        for (std::vector<std::pair<BasicBlock*, BitVector> >::iterator predSpecificValue = predVals.currTransferResult.predSpecificValues.begin();
-             predSpecificValue < predVals.currTransferResult.predSpecificValues.end();
-             ++predSpecificValue)
-        {
-          if (predSpecificValue->first == basicBlock)
-            meetInput &= predSpecificValue->second;
+        DenseMap<BasicBlock*, BitVector>::iterator predSpecificValueEntry = predVals.currTransferResult.predSpecificValues.find(basicBlock);
+        if (predSpecificValueEntry != predVals.currTransferResult.predSpecificValues.end()) {
+            errs() << "Pred-specific meet input from " << (*analysisPred)->getName() << ": " <<bitVectorToString(predSpecificValueEntry->second) << "\n";
+            meetInput |= predSpecificValueEntry->second;
         }
         meetInputs.push_back(meetInput);
       }
       if (!meetInputs.empty())
-        *passIn = applyMeet(meetInputs);
+        *passInPtr = applyMeet(meetInputs);
 
       //Apply transfer function to input set in order to get output set for this iteration
-      blockVals.currTransferResult = applyTransfer(*passIn, domainEntryToValueIdx, basicBlock);
-      BitVector* passOut = (direction == FORWARD) ? &blockVals.out : &blockVals.in;
-      *passOut = blockVals.currTransferResult.baseValue;
+      blockVals.currTransferResult = applyTransfer(*passInPtr, domainEntryToValueIdx, basicBlock);
+      BitVector* passOutPtr = (direction == FORWARD) ? &blockVals.out : &blockVals.in;
+      *passOutPtr = blockVals.currTransferResult.baseValue;
 
       //DEBUGGING
-      errs() << "Old passOut: " << bitVectorToString(*oldPassOut) << "\n";
-      errs() << "New passOut: " << bitVectorToString(*passOut) << "\n";
+      errs() << "Block " << basicBlock->getName() << ": \n";
+      errs() << "  Old passOut: " << bitVectorToString(oldPassOut) << "\n";
+      errs() << "  New passOut: " << bitVectorToString(*passOutPtr) << "\n";
 
       //Update convergence: if the output set for this block has changed, then we've not converged for this iteration
-      if (analysisConverged && passOut != oldPassOut)
-        analysisConverged = false;
+      if (analysisConverged) {
+        if (*passOutPtr != oldPassOut)
+          analysisConverged = false;
+        else if (blockVals.currTransferResult.predSpecificValues.size() != oldBlockVals.currTransferResult.predSpecificValues.size())
+          analysisConverged = false;
+      }
     }
   }
 

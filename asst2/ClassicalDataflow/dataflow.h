@@ -26,7 +26,7 @@ std::string bitVectorToString(const BitVector& bv);
  * onto the main value for the meet operator input of each predecessor (used to handle SSA phi nodes) */
 struct TransferResult {
   BitVector baseValue;
-  std::vector<std::pair<BasicBlock*, BitVector> > predSpecificValues;
+  DenseMap<BasicBlock*, BitVector> predSpecificValues;
 };
 
 struct DataFlowResultForBlock {
