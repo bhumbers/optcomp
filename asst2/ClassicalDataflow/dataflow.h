@@ -19,14 +19,30 @@
 namespace llvm {
 
 //Util to create string representation of given BitVector
-std::string bitVectorToString(BitVector bv);
+std::string bitVectorToString(const BitVector& bv);
+
+/** An intermediate transfer function output entry from a block. In addition to the main value,
+ * may include a list of predecessor block-specific transfer values which are appended (unioned)
+ * onto the main value for the meet operator input of each predecessor (used to handle SSA phi nodes) */
+struct TransferResult {
+  BitVector baseValue;
+  std::vector<std::pair<BasicBlock*, BitVector> > predSpecificValues;
+};
 
 struct DataFlowResultForBlock {
+  //Final output
   BitVector in;
   BitVector out;
 
+  //Intermediate results
+  TransferResult currTransferResult;
+
   DataFlowResultForBlock() {}
-  DataFlowResultForBlock(BitVector in, BitVector out) : in(in), out(out) {}
+  DataFlowResultForBlock(BitVector in, BitVector out) {
+    this->in = in;
+    this->out = out;
+    this->currTransferResult.baseValue = out; //tra
+  }
 };
 
 /** Base interface for running dataflow analysis passes.
@@ -58,7 +74,7 @@ class DataFlow {
 
     /** Transfer function behavior; specific to a subclassing data flow
      * domainEntryToValueIdx provides mapping from domain elements to the linear bitvector index for that element. */
-    virtual BitVector applyTransfer(const BitVector& value, DenseMap<Value*, int> domainEntryToValueIdx, BasicBlock* block) = 0;
+    virtual TransferResult applyTransfer(const BitVector& value, DenseMap<Value*, int> domainEntryToValueIdx, BasicBlock* block) = 0;
 };
 
 }

@@ -25,9 +25,13 @@ class ReachingDefinitionsDataFlow : public DataFlow {
       return meetResult;
     }
 
-    BitVector applyTransfer(const BitVector& value, DenseMap<Value*, int> domainEntryToValueIdx, BasicBlock* block) {
+    TransferResult applyTransfer(const BitVector& value, DenseMap<Value*, int> domainEntryToValueIdx, BasicBlock* block) {
+      TransferResult transfer;
+
       //TODO
-      return value;
+      transfer.baseValue = value;
+
+      return transfer;
     }
 };
 //////////////////////////////////////////////////////////////////////////////////////////////

@@ -35,7 +35,9 @@ class LivenessDataFlow : public DataFlow {
       return meetResult;
     }
 
-    BitVector applyTransfer(const BitVector& value, DenseMap<Value*, int> domainEntryToValueIdx, BasicBlock* block) {
+    TransferResult applyTransfer(const BitVector& value, DenseMap<Value*, int> domainEntryToValueIdx, BasicBlock* block) {
+      TransferResult transfer;
+
       //First, calculate set of locally exposed uses and set of defined variables in this block
       int domainSize = domainEntryToValueIdx.size();
       BitVector defSet(domainSize);
@@ -68,16 +70,16 @@ class LivenessDataFlow : public DataFlow {
       }
 
       //Then, apply liveness transfer function: Y = UseSet \union (X - DefSet)
-      BitVector outVal = defSet;
-      errs() << bitVectorToString(outVal) << "\n";
-      outVal.flip();
-      errs() << bitVectorToString(outVal) << "\n";
-      outVal &= value;
-      errs() << bitVectorToString(outVal) << "\n";
-      outVal |= useSet;
-      errs() << bitVectorToString(outVal) << "\n";
+      transfer.baseValue = defSet;
+      errs() << bitVectorToString(transfer.baseValue) << "\n";
+      transfer.baseValue.flip();
+      errs() << bitVectorToString(transfer.baseValue) << "\n";
+      transfer.baseValue &= value;
+      errs() << bitVectorToString(transfer.baseValue) << "\n";
+      transfer.baseValue |= useSet;
+      errs() << bitVectorToString(transfer.baseValue) << "\n";
 
-      return outVal;
+      return transfer;
     }
 };
 //////////////////////////////////////////////////////////////////////////////////////////////

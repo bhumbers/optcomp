@@ -10,7 +10,7 @@
 
 namespace llvm {
 
-std::string bitVectorToString(BitVector bv) {
+std::string bitVectorToString(const BitVector& bv) {
   std::string str(bv.size(), '0');
   for (int i = 0; i < bv.size(); i++)
     str[i] = bv[i] ? '1' : '0';
@@ -37,31 +37,41 @@ DenseMap<BasicBlock*, DataFlowResultForBlock> DataFlow::run(Function& F,
     domainEntryToValueIdx[domain[i]] = i;
 
   //Set initial val for boundary block (depends on direction of analysis)
-  BasicBlock* boundaryBlock = (direction == FORWARD) ? &F.front() : &F.back();
-  results[boundaryBlock] = DataFlowResultForBlock(boundaryCond, boundaryCond);
+  DataFlowResultForBlock boundaryResult = DataFlowResultForBlock();
+  BasicBlock* boundaryBlock = (direction == FORWARD) ? &F.front() : &F.back();                //fwd boundary = entry, bwd boundary = exit
+  BitVector* boundaryVal = (direction == FORWARD) ? &boundaryResult.out : &boundaryResult.in; //set either the "OUT" of entry or the "IN" of exit
+  *boundaryVal = boundaryCond;
+  boundaryResult.currTransferResult.baseValue = boundaryCond;
+  results[boundaryBlock] = boundaryResult;
 
-  //Set initial vals for interior blocks
+  //Set initial vals for interior blocks (either OUTs for fwd analysis or INs for bwd analysis)
   for (Function::iterator basicBlock = F.begin(); basicBlock != F.end(); ++basicBlock) {
-    if ((BasicBlock*)basicBlock != boundaryBlock)
-      results[basicBlock] = DataFlowResultForBlock(initInteriorCond, initInteriorCond);
+    if ((BasicBlock*)basicBlock != boundaryBlock) {
+      DataFlowResultForBlock interiorInitResult = DataFlowResultForBlock();
+      BitVector* interiorInitVal = (direction == FORWARD) ? &interiorInitResult.out : &interiorInitResult.in;
+      *interiorInitVal = initInteriorCond;
+      interiorInitResult.currTransferResult.baseValue = initInteriorCond;
+      results[basicBlock] = interiorInitResult;
+    }
   }
 
-  //Generate meet input list for each block (depending on direction of analysis)
-  DenseMap<BasicBlock*, std::vector<BitVector> > meetInputsByBlock;
+  //Generate analysis "predecessor" list for each block (depending on direction of analysis)
+  //Will be used to drive the meet inputs.
+  DenseMap<BasicBlock*, std::vector<BasicBlock*> > analysisPredsByBlock;
   for (Function::iterator basicBlock = F.begin(); basicBlock != F.end(); ++basicBlock) {
-      std::vector<BitVector> meetInputs;
+      std::vector<BasicBlock*> analysisPreds;
       switch (direction) {
         case FORWARD:
           for (pred_iterator predBlock = pred_begin(basicBlock), E = pred_end(basicBlock); predBlock != E; ++predBlock)
-            meetInputs.push_back(results[*predBlock].out);
+            analysisPreds.push_back(*predBlock);
           break;
         case BACKWARD:
           for (succ_iterator succBlock = succ_begin(basicBlock), E = succ_end(basicBlock); succBlock != E; ++succBlock)
-            meetInputs.push_back(results[*succBlock].in);
+            analysisPreds.push_back(*succBlock);
           break;
       }
 
-      meetInputsByBlock[basicBlock] = meetInputs;
+      analysisPredsByBlock[basicBlock] = analysisPreds;
   }
 
   //Iterate over blocks in function until convergence of output sets for all blocks
@@ -73,21 +83,36 @@ DenseMap<BasicBlock*, DataFlowResultForBlock> DataFlow::run(Function& F,
       DataFlowResultForBlock& blockVals = results[basicBlock];
 
       //Store old output before applying this analysis pass to the block (depends on analysis dir)
-      BitVector oldPassOut = (direction == FORWARD) ? blockVals.out : blockVals.in;
+      BitVector* oldPassOut = (direction == FORWARD) ? &blockVals.out : &blockVals.in;
 
-      //Apply meet operator to generate updated input set for this block
-      BitVector& passIn = (direction == FORWARD) ? blockVals.in : blockVals.out;
-      std::vector<BitVector> meetInputs = meetInputsByBlock[basicBlock];
+      //If any analysis predecessors have outputs ready, apply meet operator to generate updated input set for this block
+      BitVector* passIn = (direction == FORWARD) ? &blockVals.in : &blockVals.out;
+      std::vector<BasicBlock*> analysisPreds = analysisPredsByBlock[basicBlock];
+      std::vector<BitVector> meetInputs;
+      //Iterate over analysis predecessors in order to generate meet inputs for this block
+      for (std::vector<BasicBlock*>::iterator analysisPred = analysisPreds.begin(); analysisPred < analysisPreds.end(); ++analysisPred) {
+        DataFlowResultForBlock& predVals = results[*analysisPred];
+        BitVector meetInput = predVals.currTransferResult.baseValue;
+        for (std::vector<std::pair<BasicBlock*, BitVector> >::iterator predSpecificValue = predVals.currTransferResult.predSpecificValues.begin();
+             predSpecificValue < predVals.currTransferResult.predSpecificValues.end();
+             ++predSpecificValue)
+        {
+          if (predSpecificValue->first == basicBlock)
+            meetInput &= predSpecificValue->second;
+        }
+        meetInputs.push_back(meetInput);
+      }
       if (!meetInputs.empty())
-        passIn = applyMeet(meetInputs);
+        *passIn = applyMeet(meetInputs);
 
       //Apply transfer function to input set in order to get output set for this iteration
-      BitVector& passOut = (direction == FORWARD) ? blockVals.out : blockVals.in;
-      passOut = applyTransfer(passIn, domainEntryToValueIdx, basicBlock);
+      blockVals.currTransferResult = applyTransfer(*passIn, domainEntryToValueIdx, basicBlock);
+      BitVector* passOut = (direction == FORWARD) ? &blockVals.out : &blockVals.in;
+      *passOut = blockVals.currTransferResult.baseValue;
 
       //DEBUGGING
-      errs() << "Old passOut: " << bitVectorToString(oldPassOut) << "\n";
-      errs() << "New passOut: " << bitVectorToString(passOut) << "\n";
+      errs() << "Old passOut: " << bitVectorToString(*oldPassOut) << "\n";
+      errs() << "New passOut: " << bitVectorToString(*passOut) << "\n";
 
       //Update convergence: if the output set for this block has changed, then we've not converged for this iteration
       if (analysisConverged && passOut != oldPassOut)
