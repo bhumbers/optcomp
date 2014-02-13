@@ -10,9 +10,27 @@
 
 #include "dataflow.h"
 
+#include <sstream>
+
 using namespace llvm;
 
 namespace {
+
+//Outputs names of the domain elements present as indicated by a bit vector
+std::string setToString(std::vector<Value*> domain, const BitVector& includedInSet) {
+  std::stringstream ss;
+  ss << "{";
+  int numInSet = 0;
+  for (int i = 0; i < domain.size(); i++) {
+    if (includedInSet[i]) {
+      if (numInSet > 0) ss << ", ";
+      numInSet++;
+      ss << domain[i]->getName().str();
+    }
+  }
+  ss << "}";
+  return ss.str();
+}
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 //Dataflow analysis
@@ -126,45 +144,74 @@ class Liveness : public FunctionPass {
     BitVector boundaryCond(numVars);
     BitVector initInteriorCond(numVars);
 
+
     //Get dataflow values at IN and OUT points of each block
     LivenessDataFlow flow;
-    DenseMap<BasicBlock*, DataFlowResultForBlock> dataFlowResults = flow.run(F, domain, DataFlow::BACKWARD, boundaryCond, initInteriorCond);
+    DataFlowResult dataFlowResult = flow.run(F, domain, DataFlow::BACKWARD, boundaryCond, initInteriorCond);
 
     //DEBUG: Output in/out point values by block
-    for (DenseMap<BasicBlock*, DataFlowResultForBlock>::iterator dataFlowResult = dataFlowResults.begin();
-         dataFlowResult != dataFlowResults.end();
-         ++dataFlowResult) {
-      errs() << "Dataflow results for block " << (*dataFlowResult).first->getName() << ":\n";
-      errs() << "  In:  " << bitVectorToString((*dataFlowResult).second.in) << "\n";
-      errs() << "  Out: " << bitVectorToString((*dataFlowResult).second.out) << "\n";
+    for (DenseMap<BasicBlock*, DataFlowResultForBlock>::iterator blockResult = dataFlowResult.resultsByBlock.begin();
+         blockResult != dataFlowResult.resultsByBlock.end();
+         ++blockResult) {
+      errs() << "Dataflow results for block " << (*blockResult).first->getName() << ":\n";
+      errs() << "  In:  " << bitVectorToString((*blockResult).second.in) << "\n";
+      errs() << "  Out: " << bitVectorToString((*blockResult).second.out) << "\n";
     }
 
-    //Now, use dataflow results to determine liveness at program points within each block
+    errs() << "****************** LIVENESS OUTPUT FOR FUNCTION: " << F.getName() << " *****************\n";
+
+    //Now, use dataflow results to output liveness at program points within each block
     for (Function::iterator basicBlock = F.begin(); basicBlock != F.end(); ++basicBlock) {
-      DataFlowResultForBlock blockLivenessVals = dataFlowResults[basicBlock];
+      DataFlowResultForBlock blockLivenessVals = dataFlowResult.resultsByBlock[basicBlock];
+
+      //Print just the header line of the block
+      std::string basicBlockStr = valueToString(basicBlock);
+      errs() << basicBlockStr.substr(0, basicBlockStr.find('\n', 1) + 1); //hack: blocks start w/ newline, so look for first occurrence of newline past first char
 
       //Initialize liveness at end of block
       BitVector livenessVals = blockLivenessVals.out;
 
+      std::vector<std::string> blockOutputLines;
+
+      //Output lie variables at OUT of this block
+      blockOutputLines.push_back("Liveness: " + setToString(domain, livenessVals));
+
       //Iterate backward through instructions of the block, updating and outputting liveness of vars as we go
       for (BasicBlock::reverse_iterator instruction = basicBlock->rbegin(); instruction != basicBlock->rend(); ++instruction) {
-        //Special treatment for phi functions: Kill RHS and all operands; don't output liveness here (not a "real" instruction)
-        if (PHINode* phiInst = dyn_cast<PHINode>(&*instruction)) {
-          //TODO
+        //Output the instruction contents
+        blockOutputLines.push_back(valueToString(&*instruction));
+
+        //Special treatment for phi functions: Kill RHS, but don't output liveness here (not a "real" instruction)
+        PHINode* phiInst = dyn_cast<PHINode>(&*instruction);
+        if (phiInst) {
+          DenseMap<Value*, int>::const_iterator defIter = dataFlowResult.domainEntryToValueIdx.find(phiInst);
+          if (defIter != dataFlowResult.domainEntryToValueIdx.end())
+            livenessVals.reset((*defIter).second);
         }
         else {
-          //TODO: Remove vars from live set if this is their defining inst
-
-          //Add vars to live set when used as an operand
-          for (Instruction::const_op_iterator operand = instruction->op_begin(), opEnd = instruction->op_end();
-               operand != opEnd; ++operand) {
-            //TODO
+          //Add vars to live set when used as operands
+          for (Instruction::const_op_iterator operand = instruction->op_begin(), opEnd = instruction->op_end(); operand != opEnd; ++operand) {
+            Value* val = *operand;
+            if (isa<Instruction>(val) || isa<Argument>(val)) {
+              int valIdx = dataFlowResult.domainEntryToValueIdx[val];
+              livenessVals.set(valIdx);
+            }
           }
-        }
 
-        //TODO: output set of live variables at program point just past this inst (if not a phi inst)
+          //Remove a var from live set at its definition (this is its unique definition in SSA form)
+          DenseMap<Value*, int>::const_iterator defIter = dataFlowResult.domainEntryToValueIdx.find(&*instruction);
+          if (defIter != dataFlowResult.domainEntryToValueIdx.end())
+            livenessVals.reset((*defIter).second);
+
+          //Output the set of live variables at program point just before instruction
+          blockOutputLines.push_back("Liveness: " + setToString(domain, livenessVals));
+        }
       }
+      //Print out in reverse order (since we iterated backward over instructions)
+      for (std::vector<std::string>::reverse_iterator i = blockOutputLines.rbegin(); i < blockOutputLines.rend(); ++i)
+        errs() << *i << "\n";
     }
+    errs() << "****************** END LIVENESS OUTPUT FOR FUNCTION: " << F.getName() << " ******************\n";
 
     //flow.ExampleFunctionPrinter(errs(), F);
 

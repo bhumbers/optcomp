@@ -53,7 +53,7 @@ class ReachingDefinitions : public FunctionPass {
     BitVector initInteriorCond(numVars);
 
     ReachingDefinitionsDataFlow flow;
-    DenseMap<BasicBlock*, DataFlowResultForBlock> dataflowResults = flow.run(F, domain, DataFlow::FORWARD, boundaryCond, initInteriorCond);
+    DataFlowResult dataflowResult = flow.run(F, domain, DataFlow::FORWARD, boundaryCond, initInteriorCond);
 
     // Did not modify the incoming Function.
     return false;

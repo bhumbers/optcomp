@@ -2,6 +2,8 @@
 // Group: bhumbers, psuresh
 ////////////////////////////////////////////////////////////////////////////////
 
+#include <set>
+
 #include "dataflow.h"
 
 #include "llvm/Support/raw_ostream.h"
@@ -17,12 +19,18 @@ std::string bitVectorToString(const BitVector& bv) {
   return str;
 }
 
-DenseMap<BasicBlock*, DataFlowResultForBlock> DataFlow::run(Function& F,
+std::string valueToString(const Value* value) {
+  std::string instStr; llvm::raw_string_ostream rso(instStr);
+  value->print(rso);
+  return instStr;
+}
+
+DataFlowResult DataFlow::run(Function& F,
                                                             std::vector<Value*> domain,
                                                             Direction direction,
                                                             BitVector boundaryCond,
                                                             BitVector initInteriorCond) {
-  DenseMap<BasicBlock*, DataFlowResultForBlock> results;
+  DenseMap<BasicBlock*, DataFlowResultForBlock> resultsByBlock;
 
   //TODO: Would it make sense to use a linear vector of blocks and use "basic block indices" rather
   //than a map of BasicBlock pointers in order to do block references for dataflow?
@@ -36,22 +44,36 @@ DenseMap<BasicBlock*, DataFlowResultForBlock> DataFlow::run(Function& F,
   for (int i = 0; i < domain.size(); i++)
     domainEntryToValueIdx[domain[i]] = i;
 
-  //Set initial val for boundary block (depends on direction of analysis)
-  DataFlowResultForBlock boundaryResult = DataFlowResultForBlock();
-  BasicBlock* boundaryBlock = (direction == FORWARD) ? &F.front() : &F.back();                //fwd boundary = entry, bwd boundary = exit
-  BitVector* boundaryVal = (direction == FORWARD) ? &boundaryResult.out : &boundaryResult.in; //set either the "OUT" of entry or the "IN" of exit
-  *boundaryVal = boundaryCond;
-  boundaryResult.currTransferResult.baseValue = boundaryCond;
-  results[boundaryBlock] = boundaryResult;
+  //Set initial val for boundary blocks, which depend on direction of analysis
+  std::set<BasicBlock*> boundaryBlocks;
+  switch (direction) {
+    case FORWARD:
+      boundaryBlocks.insert(&F.front()); //post-"entry" block = first in list
+      break;
+    case BACKWARD:
+      //Pre-"exit" blocks = those that have a return statement
+      for(Function::iterator I = F.begin(), E = F.end(); I != E; ++I)
+        if (isa<ReturnInst>(I->getTerminator()))
+          boundaryBlocks.insert(I);
+      break;
+  }
+  for (std::set<BasicBlock*>::iterator boundaryBlock = boundaryBlocks.begin(); boundaryBlock != boundaryBlocks.end(); boundaryBlock++) {
+    DataFlowResultForBlock boundaryResult = DataFlowResultForBlock();
+    //Set either the "IN" of post-entry blocks or the "OUT" of pre-exit blocks (since entry/exit blocks don't actually exist...)
+    BitVector* boundaryVal = (direction == FORWARD) ? &boundaryResult.in : &boundaryResult.out;
+    *boundaryVal = boundaryCond;
+    boundaryResult.currTransferResult.baseValue = boundaryCond;
+    resultsByBlock[*boundaryBlock] = boundaryResult;
+  }
 
   //Set initial vals for interior blocks (either OUTs for fwd analysis or INs for bwd analysis)
   for (Function::iterator basicBlock = F.begin(); basicBlock != F.end(); ++basicBlock) {
-    if ((BasicBlock*)basicBlock != boundaryBlock) {
+    if (boundaryBlocks.find((BasicBlock*)basicBlock) == boundaryBlocks.end()) {
       DataFlowResultForBlock interiorInitResult = DataFlowResultForBlock();
       BitVector* interiorInitVal = (direction == FORWARD) ? &interiorInitResult.out : &interiorInitResult.in;
       *interiorInitVal = initInteriorCond;
       interiorInitResult.currTransferResult.baseValue = initInteriorCond;
-      results[basicBlock] = interiorInitResult;
+      resultsByBlock[basicBlock] = interiorInitResult;
     }
   }
 
@@ -80,7 +102,7 @@ DenseMap<BasicBlock*, DataFlowResultForBlock> DataFlow::run(Function& F,
 
     //TODO: if analysis is backwards, may want to iterate from back-to-front of blocks list
     for (Function::iterator basicBlock = F.begin(); basicBlock != F.end(); ++basicBlock) {
-      DataFlowResultForBlock& blockVals = results[basicBlock];
+      DataFlowResultForBlock& blockVals = resultsByBlock[basicBlock];
 
       //Store old output before applying this analysis pass to the block (depends on analysis dir)
       DataFlowResultForBlock oldBlockVals = blockVals;
@@ -92,7 +114,7 @@ DenseMap<BasicBlock*, DataFlowResultForBlock> DataFlow::run(Function& F,
       std::vector<BitVector> meetInputs;
       //Iterate over analysis predecessors in order to generate meet inputs for this block
       for (std::vector<BasicBlock*>::iterator analysisPred = analysisPreds.begin(); analysisPred < analysisPreds.end(); ++analysisPred) {
-        DataFlowResultForBlock& predVals = results[*analysisPred];
+        DataFlowResultForBlock& predVals = resultsByBlock[*analysisPred];
 
         BitVector meetInput = predVals.currTransferResult.baseValue;
 
@@ -130,7 +152,10 @@ DenseMap<BasicBlock*, DataFlowResultForBlock> DataFlow::run(Function& F,
     }
   }
 
-  return results;
+  DataFlowResult result;
+  result.domainEntryToValueIdx = domainEntryToValueIdx;
+  result.resultsByBlock = resultsByBlock;
+  return result;
 }
 
 void DataFlow::PrintInstructionOps(raw_ostream& O, const Instruction* I) {
