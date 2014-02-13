@@ -130,13 +130,13 @@ class Liveness : public FunctionPass {
         domain.push_back(&*instruction);
     }
 
-    //DEBUG: Print out domain entry names
-    errs() << "Domain: ";
-    for (int i = 0; i < domain.size(); i++) {
-      errs() << domain[i]->getName();
-      errs() << ", ";
-    }
-    errs() << "\n";
+//    //DEBUG: Print out domain entry names
+//    errs() << "Domain: ";
+//    for (int i = 0; i < domain.size(); i++) {
+//      errs() << domain[i]->getName();
+//      errs() << ", ";
+//    }
+//    errs() << "\n";
 
     int numVars = domain.size();
 
@@ -149,16 +149,17 @@ class Liveness : public FunctionPass {
     LivenessDataFlow flow;
     DataFlowResult dataFlowResult = flow.run(F, domain, DataFlow::BACKWARD, boundaryCond, initInteriorCond);
 
-    //DEBUG: Output in/out point values by block
-    for (DenseMap<BasicBlock*, DataFlowResultForBlock>::iterator blockResult = dataFlowResult.resultsByBlock.begin();
-         blockResult != dataFlowResult.resultsByBlock.end();
-         ++blockResult) {
-      errs() << "Dataflow results for block " << (*blockResult).first->getName() << ":\n";
-      errs() << "  In:  " << bitVectorToString((*blockResult).second.in) << "\n";
-      errs() << "  Out: " << bitVectorToString((*blockResult).second.out) << "\n";
-    }
+//    //DEBUG: Output in/out point values by block
+//    for (DenseMap<BasicBlock*, DataFlowResultForBlock>::iterator blockResult = dataFlowResult.resultsByBlock.begin();
+//         blockResult != dataFlowResult.resultsByBlock.end();
+//         ++blockResult) {
+//      errs() << "Dataflow results for block " << (*blockResult).first->getName() << ":\n";
+//      errs() << "  In:  " << bitVectorToString((*blockResult).second.in) << "\n";
+//      errs() << "  Out: " << bitVectorToString((*blockResult).second.out) << "\n";
+//    }
 
-    errs() << "****************** LIVENESS OUTPUT FOR FUNCTION: " << F.getName() << " *****************\n";
+    errs() << "\n****************** LIVENESS OUTPUT FOR FUNCTION: " << F.getName() << " *****************\n";
+    errs() << "Domain of values: " << setToString(domain, BitVector(domain.size(), true));
 
     //Now, use dataflow results to output liveness at program points within each block
     for (Function::iterator basicBlock = F.begin(); basicBlock != F.end(); ++basicBlock) {

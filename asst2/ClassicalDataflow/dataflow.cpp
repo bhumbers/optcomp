@@ -121,7 +121,7 @@ DataFlowResult DataFlow::run(Function& F,
         //If this pred matches a predecessor-specific value for the current block, union that value into live set
         DenseMap<BasicBlock*, BitVector>::iterator predSpecificValueEntry = predVals.currTransferResult.predSpecificValues.find(basicBlock);
         if (predSpecificValueEntry != predVals.currTransferResult.predSpecificValues.end()) {
-            errs() << "Pred-specific meet input from " << (*analysisPred)->getName() << ": " <<bitVectorToString(predSpecificValueEntry->second) << "\n";
+//            errs() << "Pred-specific meet input from " << (*analysisPred)->getName() << ": " <<bitVectorToString(predSpecificValueEntry->second) << "\n";
             meetInput |= predSpecificValueEntry->second;
         }
 
@@ -135,10 +135,10 @@ DataFlowResult DataFlow::run(Function& F,
       BitVector* passOutPtr = (direction == FORWARD) ? &blockVals.out : &blockVals.in;
       *passOutPtr = blockVals.currTransferResult.baseValue;
 
-      //DEBUGGING
-      errs() << "Block " << basicBlock->getName() << ": \n";
-      errs() << "  Old passOut: " << bitVectorToString(oldPassOut) << "\n";
-      errs() << "  New passOut: " << bitVectorToString(*passOutPtr) << "\n";
+//      //DEBUGGING
+//      errs() << "Block " << basicBlock->getName() << ": \n";
+//      errs() << "  Old passOut: " << bitVectorToString(oldPassOut) << "\n";
+//      errs() << "  New passOut: " << bitVectorToString(*passOutPtr) << "\n";
 
       //Update convergence: if the output set for this block has changed, then we've not converged for this iteration
       if (analysisConverged) {
