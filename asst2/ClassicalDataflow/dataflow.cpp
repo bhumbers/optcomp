@@ -93,12 +93,16 @@ DenseMap<BasicBlock*, DataFlowResultForBlock> DataFlow::run(Function& F,
       //Iterate over analysis predecessors in order to generate meet inputs for this block
       for (std::vector<BasicBlock*>::iterator analysisPred = analysisPreds.begin(); analysisPred < analysisPreds.end(); ++analysisPred) {
         DataFlowResultForBlock& predVals = results[*analysisPred];
+
         BitVector meetInput = predVals.currTransferResult.baseValue;
+
+        //If this pred matches a predecessor-specific value for the current block, union that value into live set
         DenseMap<BasicBlock*, BitVector>::iterator predSpecificValueEntry = predVals.currTransferResult.predSpecificValues.find(basicBlock);
         if (predSpecificValueEntry != predVals.currTransferResult.predSpecificValues.end()) {
             errs() << "Pred-specific meet input from " << (*analysisPred)->getName() << ": " <<bitVectorToString(predSpecificValueEntry->second) << "\n";
             meetInput |= predSpecificValueEntry->second;
         }
+
         meetInputs.push_back(meetInput);
       }
       if (!meetInputs.empty())
@@ -120,6 +124,8 @@ DenseMap<BasicBlock*, DataFlowResultForBlock> DataFlow::run(Function& F,
           analysisConverged = false;
         else if (blockVals.currTransferResult.predSpecificValues.size() != oldBlockVals.currTransferResult.predSpecificValues.size())
           analysisConverged = false;
+        //(should really check whether contents of pred-specific values changed as well, but
+        // that doesn't happen when the pred-specific values are just a result of phi-nodes)
       }
     }
   }

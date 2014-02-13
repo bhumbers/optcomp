@@ -81,13 +81,13 @@ class LivenessDataFlow : public DataFlow {
 
       //Then, apply liveness transfer function: Y = UseSet \union (X - DefSet)
       transfer.baseValue = defSet;
-      errs() << bitVectorToString(transfer.baseValue) << "\n";
+//      errs() << bitVectorToString(transfer.baseValue) << "\n";
       transfer.baseValue.flip();
-      errs() << bitVectorToString(transfer.baseValue) << "\n";
+//      errs() << bitVectorToString(transfer.baseValue) << "\n";
       transfer.baseValue &= value;
-      errs() << bitVectorToString(transfer.baseValue) << "\n";
+//      errs() << bitVectorToString(transfer.baseValue) << "\n";
       transfer.baseValue |= useSet;
-      errs() << bitVectorToString(transfer.baseValue) << "\n";
+//      errs() << bitVectorToString(transfer.baseValue) << "\n";
 
       return transfer;
     }
