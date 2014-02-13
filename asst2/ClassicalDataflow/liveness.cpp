@@ -10,27 +10,9 @@
 
 #include "dataflow.h"
 
-#include <sstream>
-
 using namespace llvm;
 
 namespace {
-
-//Outputs names of the domain elements present as indicated by a bit vector
-std::string setToString(std::vector<Value*> domain, const BitVector& includedInSet) {
-  std::stringstream ss;
-  ss << "{";
-  int numInSet = 0;
-  for (int i = 0; i < domain.size(); i++) {
-    if (includedInSet[i]) {
-      if (numInSet > 0) ss << ", ";
-      numInSet++;
-      ss << domain[i]->getName().str();
-    }
-  }
-  ss << "}";
-  return ss.str();
-}
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 //Dataflow analysis
@@ -124,26 +106,16 @@ class Liveness : public FunctionPass {
     for (Function::arg_iterator arg = F.arg_begin(); arg != F.arg_end(); ++arg)
       domain.push_back(arg);
     for (inst_iterator instruction = inst_begin(F), e = inst_end(F); instruction != e; ++instruction) {
-      //If instruction has a nonempty name, then it defines a variable for our domain
-      //(TODO: I'm not really sure how correct this is at all... is there a better way to identify "definining" instructions?)
-      if (!instruction->getName().empty())
+      //If instruction has a nonempty definition variable, then it defines a variable for our domain
+      if (!valueToDefinitionStr(&*instruction).empty())
         domain.push_back(&*instruction);
     }
-
-//    //DEBUG: Print out domain entry names
-//    errs() << "Domain: ";
-//    for (int i = 0; i < domain.size(); i++) {
-//      errs() << domain[i]->getName();
-//      errs() << ", ";
-//    }
-//    errs() << "\n";
 
     int numVars = domain.size();
 
     //Determine boundary & interior initial dataflow values
     BitVector boundaryCond(numVars);
     BitVector initInteriorCond(numVars);
-
 
     //Get dataflow values at IN and OUT points of each block
     LivenessDataFlow flow;
@@ -212,7 +184,7 @@ class Liveness : public FunctionPass {
       for (std::vector<std::string>::reverse_iterator i = blockOutputLines.rbegin(); i < blockOutputLines.rend(); ++i)
         errs() << *i << "\n";
     }
-    errs() << "****************** END LIVENESS OUTPUT FOR FUNCTION: " << F.getName() << " ******************\n";
+    errs() << "****************** END LIVENESS OUTPUT FOR FUNCTION: " << F.getName() << " ******************\n\n";
 
     //flow.ExampleFunctionPrinter(errs(), F);
 

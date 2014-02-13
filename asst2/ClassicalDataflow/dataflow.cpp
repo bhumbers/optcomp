@@ -3,6 +3,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include <set>
+#include <sstream>
 
 #include "dataflow.h"
 
@@ -12,6 +13,8 @@
 
 namespace llvm {
 
+/******************************************************************************************
+ * String output utilities */
 std::string bitVectorToString(const BitVector& bv) {
   std::string str(bv.size(), '0');
   for (int i = 0; i < bv.size(); i++)
@@ -24,6 +27,46 @@ std::string valueToString(const Value* value) {
   value->print(rso);
   return instStr;
 }
+
+std::string valueToDefinitionStr(Value* v) {
+  std::string str = valueToString(v);
+  //Really, really brittle code: Definitions are assumed to either be arguments or to be instructions that start with "  %" (note the 2x spaces)
+  //Unfortunately, we couldn't figure a better way to catch all definitions otherwise, as cases like "%0" and "%1" don't show up
+  //when using "getName()" to identify definition instructions. There's got to be a better way, though...
+  if (isa<Argument>(v)) {
+    return v->getName();
+  }
+  else if (isa<Instruction>(v)){
+    int varNameStartIdx = 3;
+    if (str.length() > varNameStartIdx && str.substr(0,varNameStartIdx) == "  %") {
+      int varNameEndIdx = str.find(' ',varNameStartIdx);
+      str = str.substr(varNameStartIdx,varNameEndIdx-varNameStartIdx);
+      return str;
+    }
+    else
+      return "";
+  }
+  return "";
+}
+
+std::string setToString(std::vector<Value*> domain, const BitVector& includedInSet) {
+  std::stringstream ss;
+  ss << "{";
+  int numInSet = 0;
+  for (int i = 0; i < domain.size(); i++) {
+    if (includedInSet[i]) {
+      if (numInSet > 0) ss << ", ";
+      numInSet++;
+      ss << valueToDefinitionStr(domain[i]);
+    }
+  }
+  ss << "}";
+  return ss.str();
+}
+
+/* End string output utilities *
+******************************************************************************************/
+
 
 DataFlowResult DataFlow::run(Function& F,
                                                             std::vector<Value*> domain,
