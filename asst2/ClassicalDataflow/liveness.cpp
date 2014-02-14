@@ -81,13 +81,9 @@ class LivenessDataFlow : public DataFlow {
 
       //Then, apply liveness transfer function: Y = UseSet \union (X - DefSet)
       transfer.baseValue = defSet;
-//      errs() << bitVectorToString(transfer.baseValue) << "\n";
       transfer.baseValue.flip();
-//      errs() << bitVectorToString(transfer.baseValue) << "\n";
       transfer.baseValue &= value;
-//      errs() << bitVectorToString(transfer.baseValue) << "\n";
       transfer.baseValue |= useSet;
-//      errs() << bitVectorToString(transfer.baseValue) << "\n";
 
       return transfer;
     }
@@ -106,35 +102,27 @@ class Liveness : public FunctionPass {
     for (Function::arg_iterator arg = F.arg_begin(); arg != F.arg_end(); ++arg)
       domain.push_back(arg);
     for (inst_iterator instruction = inst_begin(F), e = inst_end(F); instruction != e; ++instruction) {
-      //If instruction has a nonempty definition variable, then it defines a variable for our domain
-      if (!valueToDefinitionStr(&*instruction).empty())
+      //If instruction has a nonempty LHS variable name, then it defines a variable for our domain
+      if (!valueToDefinitionVarStr(&*instruction).empty())
         domain.push_back(&*instruction);
     }
 
     int numVars = domain.size();
 
-    //Determine boundary & interior initial dataflow values
-    BitVector boundaryCond(numVars);
-    BitVector initInteriorCond(numVars);
+    //Set boundary & interior initial dataflow values to be empty sets
+    BitVector boundaryCond(numVars, false);
+    BitVector initInteriorCond(numVars, false);
 
     //Get dataflow values at IN and OUT points of each block
     LivenessDataFlow flow;
     DataFlowResult dataFlowResult = flow.run(F, domain, DataFlow::BACKWARD, boundaryCond, initInteriorCond);
 
-//    //DEBUG: Output in/out point values by block
-//    for (DenseMap<BasicBlock*, DataFlowResultForBlock>::iterator blockResult = dataFlowResult.resultsByBlock.begin();
-//         blockResult != dataFlowResult.resultsByBlock.end();
-//         ++blockResult) {
-//      errs() << "Dataflow results for block " << (*blockResult).first->getName() << ":\n";
-//      errs() << "  In:  " << bitVectorToString((*blockResult).second.in) << "\n";
-//      errs() << "  Out: " << bitVectorToString((*blockResult).second.out) << "\n";
-//    }
-
+    //Then, extend those values into the interior points of each block, outputting the result along the way
     errs() << "\n****************** LIVENESS OUTPUT FOR FUNCTION: " << F.getName() << " *****************\n";
-    errs() << "Domain of values: " << setToString(domain, BitVector(domain.size(), true)) << "\n";
+    errs() << "Domain of values: " << setToStr(domain, BitVector(domain.size(), true), valueToDefinitionVarStr) << "\n";
 
     //Print function header (in hacky way... look for "definition" keyword in full printed function, then print rest of that line only)
-    std::string funcStr = valueToString(&F);
+    std::string funcStr = valueToStr(&F);
     int funcHeaderStartIdx = funcStr.find("define");
     int funcHeaderEndIdx = funcStr.find('{', funcHeaderStartIdx + 1);
     errs() << funcStr.substr(funcHeaderStartIdx, funcHeaderEndIdx-funcHeaderStartIdx) << "\n";
@@ -144,7 +132,7 @@ class Liveness : public FunctionPass {
       DataFlowResultForBlock blockLivenessVals = dataFlowResult.resultsByBlock[basicBlock];
 
       //Print just the header line of the block (in a hacky way... blocks start w/ newline, so look for first occurrence of newline beyond first char
-      std::string basicBlockStr = valueToString(basicBlock);
+      std::string basicBlockStr = valueToStr(basicBlock);
       errs() << basicBlockStr.substr(0, basicBlockStr.find(':', 1) + 1) << "\n";
 
       //Initialize liveness at end of block
@@ -153,14 +141,14 @@ class Liveness : public FunctionPass {
       std::vector<std::string> blockOutputLines;
 
       //Output live variables at the OUT point of this block (not strictly needed, but useful to see)
-      blockOutputLines.push_back("Liveness: " + setToString(domain, livenessVals));
+      blockOutputLines.push_back("Liveness: " + setToStr(domain, livenessVals, valueToDefinitionVarStr));
 
       //Iterate backward through instructions of the block, updating and outputting liveness of vars as we go
       for (BasicBlock::reverse_iterator instruction = basicBlock->rbegin(); instruction != basicBlock->rend(); ++instruction) {
         //Output the instruction contents
-        blockOutputLines.push_back(valueToString(&*instruction));
+        blockOutputLines.push_back(valueToStr(&*instruction));
 
-        //Special treatment for phi functions: Kill RHS, but don't output liveness here (not a "real" instruction)
+        //Special treatment for phi functions: Kill LHS, but don't output liveness here (not a "real" instruction)
         PHINode* phiInst = dyn_cast<PHINode>(&*instruction);
         if (phiInst) {
           DenseMap<Value*, int>::const_iterator defIter = dataFlowResult.domainEntryToValueIdx.find(phiInst);
@@ -183,7 +171,7 @@ class Liveness : public FunctionPass {
             livenessVals.reset((*defIter).second);
 
           //Output the set of live variables at program point just before instruction
-          blockOutputLines.push_back("Liveness: " + setToString(domain, livenessVals));
+          blockOutputLines.push_back("Liveness: " + setToStr(domain, livenessVals, valueToDefinitionVarStr));
         }
       }
       //Print out in reverse order (since we iterated backward over instructions)

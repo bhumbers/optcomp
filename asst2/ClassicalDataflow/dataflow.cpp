@@ -15,30 +15,48 @@ namespace llvm {
 
 /******************************************************************************************
  * String output utilities */
-std::string bitVectorToString(const BitVector& bv) {
+std::string bitVectorToStr(const BitVector& bv) {
   std::string str(bv.size(), '0');
   for (int i = 0; i < bv.size(); i++)
     str[i] = bv[i] ? '1' : '0';
   return str;
 }
 
-std::string valueToString(const Value* value) {
+std::string valueToStr(const Value* value) {
   std::string instStr; llvm::raw_string_ostream rso(instStr);
   value->print(rso);
   return instStr;
 }
 
 std::string valueToDefinitionStr(Value* v) {
-  std::string str = valueToString(v);
+  std::string str = valueToStr(v);
   //Really, really brittle code: Definitions are assumed to either be arguments or to be instructions that start with "  %" (note the 2x spaces)
   //Unfortunately, we couldn't figure a better way to catch all definitions otherwise, as cases like "%0" and "%1" don't show up
   //when using "getName()" to identify definition instructions. There's got to be a better way, though...
   if (isa<Argument>(v)) {
+    return str;
+  }
+  else if (isa<Instruction>(v)){
+    int varNameStartIdx = 2;
+    if (str.length() > varNameStartIdx && str.substr(0,varNameStartIdx+1) == "  %") {
+      str = str.substr(varNameStartIdx);
+      return str;
+    }
+    else
+      return "";
+  }
+  return "";
+}
+
+std::string valueToDefinitionVarStr(Value* v) {
+  //Similar to valueToDefinitionStr, but we extract just the var name
+  if (isa<Argument>(v)) {
     return v->getName();
   }
   else if (isa<Instruction>(v)){
-    int varNameStartIdx = 3;
-    if (str.length() > varNameStartIdx && str.substr(0,varNameStartIdx) == "  %") {
+    std::string str = valueToStr(v);
+    int varNameStartIdx = 2;
+    if (str.length() > varNameStartIdx && str.substr(0,varNameStartIdx+1) == "  %") {
       int varNameEndIdx = str.find(' ',varNameStartIdx);
       str = str.substr(varNameStartIdx,varNameEndIdx-varNameStartIdx);
       return str;
@@ -49,15 +67,15 @@ std::string valueToDefinitionStr(Value* v) {
   return "";
 }
 
-std::string setToString(std::vector<Value*> domain, const BitVector& includedInSet) {
+std::string setToStr(std::vector<Value*> domain, const BitVector& includedInSet, std::string (*valFormatFunc)(Value*)) {
   std::stringstream ss;
   ss << "{";
   int numInSet = 0;
   for (int i = 0; i < domain.size(); i++) {
     if (includedInSet[i]) {
-      if (numInSet > 0) ss << ", ";
+      if (numInSet > 0) ss << " | ";
       numInSet++;
-      ss << valueToDefinitionStr(domain[i]);
+      ss << valFormatFunc(domain[i]);
     }
   }
   ss << "}";
@@ -161,10 +179,10 @@ DataFlowResult DataFlow::run(Function& F,
 
         BitVector meetInput = predVals.currTransferResult.baseValue;
 
-        //If this pred matches a predecessor-specific value for the current block, union that value into live set
+        //If this pred matches a predecessor-specific value for the current block, union that value into value set
         DenseMap<BasicBlock*, BitVector>::iterator predSpecificValueEntry = predVals.currTransferResult.predSpecificValues.find(basicBlock);
         if (predSpecificValueEntry != predVals.currTransferResult.predSpecificValues.end()) {
-//            errs() << "Pred-specific meet input from " << (*analysisPred)->getName() << ": " <<bitVectorToString(predSpecificValueEntry->second) << "\n";
+//            errs() << "Pred-specific meet input from " << (*analysisPred)->getName() << ": " <<bitVectorToStr(predSpecificValueEntry->second) << "\n";
             meetInput |= predSpecificValueEntry->second;
         }
 
@@ -180,8 +198,8 @@ DataFlowResult DataFlow::run(Function& F,
 
 //      //DEBUGGING
 //      errs() << "Block " << basicBlock->getName() << ": \n";
-//      errs() << "  Old passOut: " << bitVectorToString(oldPassOut) << "\n";
-//      errs() << "  New passOut: " << bitVectorToString(*passOutPtr) << "\n";
+//      errs() << "  Old passOut: " << bitVectorToStr(oldPassOut) << "\n";
+//      errs() << "  New passOut: " << bitVectorToStr(*passOutPtr) << "\n";
 
       //Update convergence: if the output set for this block has changed, then we've not converged for this iteration
       if (analysisConverged) {

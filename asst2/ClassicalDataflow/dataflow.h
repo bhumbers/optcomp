@@ -19,14 +19,22 @@
 namespace llvm {
 
 /** Util to create string representation of given BitVector */
-std::string bitVectorToString(const BitVector& bv);
+std::string bitVectorToStr(const BitVector& bv);
+
 /** Util to output string representation of an llvm Value */
-std::string valueToString(const Value* value);
-/** Returns string representation of a set of domain elements with inclusion indicated by a bit vector */
-std::string setToString(std::vector<Value*> domain, const BitVector& includedInSet);
+std::string valueToStr(const Value* value);
+
+/** Returns string representation of a set of domain elements with inclusion indicated by a bit vector
+ Each element is output according to the given valFormatFunc function */
+std::string setToStr(std::vector<Value*> domain, const BitVector& includedInSet, std::string (*valFormatFunc)(Value*));
+
+/** Returns string version of definition if the Value is in fact a definition, or an empty string otherwise.
+ * eg: The defining instruction "%a = add nsw i32 %b, 1" will return exactly that: "%a = add nsw i32 %b, 1"*/
+std::string valueToDefinitionStr(Value* v);
+
 /** Returns the name of a defined variable if the given Value is a definition, or an empty string otherwise.
  * eg: The defining instruction "%a = add nsw i32 %b, 1" will return "a"*/
-std::string valueToDefinitionStr(Value* v);
+std::string valueToDefinitionVarStr(Value* v);
 
 /** An intermediate transfer function output entry from a block. In addition to the main value,
  * may include a list of predecessor block-specific transfer values which are appended (unioned)
