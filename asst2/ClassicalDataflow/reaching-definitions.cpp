@@ -90,9 +90,15 @@ class ReachingDefinitions : public FunctionPass {
 
     int numVars = domain.size();
 
-    //Set boundary & interior initial dataflow values to be empty sets
+    //Set the initial boundary dataflow value to be the set of input argument definitions for this function
     BitVector boundaryCond(numVars, false);
+    for (int i = 0; i < domain.size(); i++)
+      if (isa<Argument>(domain[i]))
+        boundaryCond.set(i);
+
+    //Set interior initial dataflow values to be empty sets
     BitVector initInteriorCond(numVars, false);
+
 
     //Get dataflow values at IN and OUT points of each block
     ReachingDefinitionsDataFlow flow;
