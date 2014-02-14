@@ -51,7 +51,7 @@ std::string valueToDefinitionStr(Value* v) {
 std::string valueToDefinitionVarStr(Value* v) {
   //Similar to valueToDefinitionStr, but we extract just the var name
   if (isa<Argument>(v)) {
-    return v->getName();
+    return "%" + v->getName().str();
   }
   else if (isa<Instruction>(v)){
     std::string str = valueToStr(v);
@@ -87,16 +87,11 @@ std::string setToStr(std::vector<Value*> domain, const BitVector& includedInSet,
 
 
 DataFlowResult DataFlow::run(Function& F,
-                                                            std::vector<Value*> domain,
-                                                            Direction direction,
-                                                            BitVector boundaryCond,
-                                                            BitVector initInteriorCond) {
+                              std::vector<Value*> domain,
+                              Direction direction,
+                              BitVector boundaryCond,
+                              BitVector initInteriorCond) {
   DenseMap<BasicBlock*, DataFlowResultForBlock> resultsByBlock;
-
-  //TODO: Would it make sense to use a linear vector of blocks and use "basic block indices" rather
-  //than a map of BasicBlock pointers in order to do block references for dataflow?
-  //Might be cleaner and/or faster... depends on how efficient DenseMap is.
-
   bool analysisConverged = false;
 
   //Create mapping from domain entries to linear indices
@@ -161,7 +156,8 @@ DataFlowResult DataFlow::run(Function& F,
   while (!analysisConverged) {
     analysisConverged = true; //assume converged until proven otherwise during this iteration
 
-    //TODO: if analysis is backwards, may want to iterate from back-to-front of blocks list
+    //TODO: if analysis is backwards, may want instead to iterate from back-to-front of blocks list
+
     for (Function::iterator basicBlock = F.begin(); basicBlock != F.end(); ++basicBlock) {
       DataFlowResultForBlock& blockVals = resultsByBlock[basicBlock];
 
@@ -195,11 +191,6 @@ DataFlowResult DataFlow::run(Function& F,
       blockVals.currTransferResult = applyTransfer(*passInPtr, domainEntryToValueIdx, basicBlock);
       BitVector* passOutPtr = (direction == FORWARD) ? &blockVals.out : &blockVals.in;
       *passOutPtr = blockVals.currTransferResult.baseValue;
-
-//      //DEBUGGING
-//      errs() << "Block " << basicBlock->getName() << ": \n";
-//      errs() << "  Old passOut: " << bitVectorToStr(oldPassOut) << "\n";
-//      errs() << "  New passOut: " << bitVectorToStr(*passOutPtr) << "\n";
 
       //Update convergence: if the output set for this block has changed, then we've not converged for this iteration
       if (analysisConverged) {
