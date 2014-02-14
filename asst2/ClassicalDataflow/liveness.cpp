@@ -131,22 +131,28 @@ class Liveness : public FunctionPass {
 //    }
 
     errs() << "\n****************** LIVENESS OUTPUT FOR FUNCTION: " << F.getName() << " *****************\n";
-    errs() << "Domain of values: " << setToString(domain, BitVector(domain.size(), true));
+    errs() << "Domain of values: " << setToString(domain, BitVector(domain.size(), true)) << "\n";
+
+    //Print function header (in hacky way... look for "definition" keyword in full printed function, then print rest of that line only)
+    std::string funcStr = valueToString(&F);
+    int funcHeaderStartIdx = funcStr.find("define");
+    int funcHeaderEndIdx = funcStr.find('{', funcHeaderStartIdx + 1);
+    errs() << funcStr.substr(funcHeaderStartIdx, funcHeaderEndIdx-funcHeaderStartIdx) << "\n";
 
     //Now, use dataflow results to output liveness at program points within each block
     for (Function::iterator basicBlock = F.begin(); basicBlock != F.end(); ++basicBlock) {
       DataFlowResultForBlock blockLivenessVals = dataFlowResult.resultsByBlock[basicBlock];
 
-      //Print just the header line of the block
+      //Print just the header line of the block (in a hacky way... blocks start w/ newline, so look for first occurrence of newline beyond first char
       std::string basicBlockStr = valueToString(basicBlock);
-      errs() << basicBlockStr.substr(0, basicBlockStr.find('\n', 1) + 1); //hack: blocks start w/ newline, so look for first occurrence of newline past first char
+      errs() << basicBlockStr.substr(0, basicBlockStr.find(':', 1) + 1) << "\n";
 
       //Initialize liveness at end of block
       BitVector livenessVals = blockLivenessVals.out;
 
       std::vector<std::string> blockOutputLines;
 
-      //Output lie variables at OUT of this block
+      //Output live variables at the OUT point of this block (not strictly needed, but useful to see)
       blockOutputLines.push_back("Liveness: " + setToString(domain, livenessVals));
 
       //Iterate backward through instructions of the block, updating and outputting liveness of vars as we go
