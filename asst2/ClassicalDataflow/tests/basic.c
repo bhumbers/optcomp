@@ -20,3 +20,31 @@ int basic_with_double_branch(int x, int y)
     z = x + x;
   return z;
 }
+
+int foo(int x, int y) 
+{
+  int b = x + y;
+  int c = 45 + b;
+  if (x > 5)
+    return 5 + x;
+  else
+    return foo(y-1,1);
+}
+
+int bar(int x, int y)
+{
+  if (x > 2)
+    return x + y;
+  else 
+    return bar(x - 1, y);
+}
+
+int basic_function_call(int x, int y) 
+{
+  int a = x * y;
+  if (a < 42)
+    return foo(a, 13) + 5;
+  else
+    a = x - 1;
+  return foo(a, x);
+}
