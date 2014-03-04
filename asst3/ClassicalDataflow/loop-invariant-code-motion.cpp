@@ -63,7 +63,7 @@ class LoopInvariantCodeMotion : public LoopPass {
   LoopInvariantCodeMotion() : LoopPass(ID) { }
 
   bool doInitialization(Loop * L, LPPassManager &LPM) {
-    errs() << "Doing LoopPass Init";
+//    errs() << "Doing LoopPass Init";
     return false;
   }
 
@@ -115,25 +115,29 @@ class LoopInvariantCodeMotion : public LoopPass {
     for (DenseMap<BasicBlock*, DataFlowResultForBlock>::iterator resultsIter = dominanceResults.resultsByBlock.begin();
            resultsIter != dominanceResults.resultsByBlock.end();
            ++resultsIter) {
+      DataFlowResultForBlock& blockResult = resultsIter->second;
       BitVector visited(dominanceResults.resultsByBlock.size(), false);
       std::queue<BasicBlock*> work;
       work.push(resultsIter->first);
       while (!work.empty()) {
-        BasicBlock* curr = work.front();
+        BasicBlock* currAncestor = work.front();
         work.pop();
-        int currIdx = dominanceResults.domainEntryToValueIdx[curr];
+        int currIdx = dominanceResults.domainEntryToValueIdx[currAncestor];
         visited.set(currIdx);
 
-        //TODO: Check if contained in dom set for current results block here, mark as idom if so and break
+        //If ancesstor is contained in dom set for the results block, mark as idom and quit
+        if (blockResult.in[currIdx]) {
+          immDoms[resultsIter->first] = currAncestor;
+          break;
+        }
 
-        for (pred_iterator predBlock = pred_begin(curr), E = pred_end(curr); predBlock != E; ++predBlock) {
+        for (pred_iterator predBlock = pred_begin(currAncestor), E = pred_end(currAncestor); predBlock != E; ++predBlock) {
           int predIdx = dominanceResults.domainEntryToValueIdx[*predBlock];
           if (!visited[predIdx]) {
             work.push(*predBlock);
           }
         }
       }
-
     }
 
     errs() << "{";
@@ -148,12 +152,34 @@ class LoopInvariantCodeMotion : public LoopPass {
     for (DenseMap<BasicBlock*, DataFlowResultForBlock>::iterator resultsIter = dominanceResults.resultsByBlock.begin();
            resultsIter != dominanceResults.resultsByBlock.end();
            ++resultsIter) {
-      int padding = 30;
-
       char str[100];
-      sprintf(str, "Dominators for %-20s:", ((std::string)resultsIter->first->getName()).c_str());
-      errs() << str << bitVectorToStr(resultsIter->second.out) << "\n";
+      BasicBlock* idom = immDoms[resultsIter->first];
+      if (idom) {
+        sprintf(str, "%-30s is idom of %-30s", ((std::string)idom->getName()).c_str(), ((std::string)resultsIter->first->getName()).c_str());
+        errs() << str << "\n";
+      }
+      else {
+        sprintf(str, "%-30s has no idom", ((std::string)resultsIter->first->getName()).c_str());
+        errs() << str << "\n";
+      }
+//      sprintf(str, "Dominators for %-20s:", );
+//      errs() << str << bitVectorToStr(resultsIter->second.out) << "\n";
     }
+
+    //TODO: Compute reaching definitions
+    //TODO: Compute loop invariant computations
+    //TODO: Find loop exits (nodes w/ exits outside loop)
+    //TODO: Mark candidate statements for motion. Necessary conditions:
+    //  Loop invariant
+    //  In blocks that dominate all loop exits
+    //  Assigned to variable not assigned to elsewhere in loop
+    //  In blocks that dominate all blocks in the loop that use the variable assigned
+    //TODO: Move candidates for LICM to preheader
+    //  Do a DFS ordering of blocks;
+    //  Move candidate to preheader if all invariant ops that it depends on have been moved
+
+    //TODO: Ensure that we either iterate over loops until all LICM expressions bubble out,
+    // or that we process loops from innermost to outermost ordering
 
     return false;
   }
