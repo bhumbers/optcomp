@@ -13,6 +13,32 @@
 
 namespace llvm {
 
+/* Var definition util */
+Value* getDefinitionVar(Value* v) {
+  // Definitions are assumed to be one of:
+  // 1) Function arguments
+  // 2) Store instructions (2nd argument is the variable being (re)defined)
+  // 3) Instructions that start with "  %" (note the 2x spaces)
+  //      Note that this is a pretty brittle and hacky way to catch what seems the most common definition type in LLVM.
+  //      Unfortunately, we couldn't figure a better way to catch all definitions otherwise, as cases like
+  //      "%0" and "%1" don't show up  when using "getName()" to identify definition instructions.
+  //      There's got to be a better way, though...
+
+  if (isa<Argument>(v)) {
+    return v;
+  }
+  else if (isa<StoreInst>(v)) {
+    return ((StoreInst*)v)->getPointerOperand();
+  }
+  else if (isa<Instruction>(v)){
+    std::string str = valueToStr(v);
+    const int VAR_NAME_START_IDX = 2;
+    if (str.length() > VAR_NAME_START_IDX && str.substr(0,VAR_NAME_START_IDX+1) == "  %")
+      return v;
+  }
+  return 0;
+}
+
 /******************************************************************************************
  * String output utilities */
 std::string bitVectorToStr(const BitVector& bv) {
@@ -28,54 +54,53 @@ std::string valueToStr(const Value* value) {
   return instStr;
 }
 
+const int VAR_NAME_START_IDX = 2;
+
 std::string valueToDefinitionStr(Value* v) {
+  //Verify it's a definition first
+  Value* def = getDefinitionVar(v);
+  if (def == 0)
+    return "";
+
   std::string str = valueToStr(v);
-  //Really, really brittle code: Definitions are assumed to either be arguments or to be instructions that start with "  %" (note the 2x spaces)
-  //Unfortunately, we couldn't figure a better way to catch all definitions otherwise, as cases like "%0" and "%1" don't show up
-  //when using "getName()" to identify definition instructions. There's got to be a better way, though...
   if (isa<Argument>(v)) {
     return str;
   }
-  else if (isa<Instruction>(v)){
-    int varNameStartIdx = 2;
-    if (str.length() > varNameStartIdx && str.substr(0,varNameStartIdx+1) == "  %") {
-      str = str.substr(varNameStartIdx);
+  else {
+      str = str.substr(VAR_NAME_START_IDX);
       return str;
-    }
-    else
-      return "";
   }
+
   return "";
 }
 
 std::string valueToDefinitionVarStr(Value* v) {
-  //Similar to valueToDefinitionStr, but we extract just the var name
-  if (isa<Argument>(v)) {
-    return "%" + v->getName().str();
+  //Similar to valueToDefinitionStr, but we return just the defined var rather than the whole definition
+
+  Value* def = getDefinitionVar(v);
+  if (def == 0)
+    return "";
+
+  if (isa<Argument>(def) || isa<StoreInst>(def)) {
+    return "%" + def->getName().str();
   }
-  else if (isa<Instruction>(v)){
-    std::string str = valueToStr(v);
-    int varNameStartIdx = 2;
-    if (str.length() > varNameStartIdx && str.substr(0,varNameStartIdx+1) == "  %") {
-      int varNameEndIdx = str.find(' ',varNameStartIdx);
-      str = str.substr(varNameStartIdx,varNameEndIdx-varNameStartIdx);
-      return str;
-    }
-    else
-      return "";
+  else {
+    std::string str = valueToStr(def);
+    int varNameEndIdx = str.find(' ',VAR_NAME_START_IDX);
+    str = str.substr(VAR_NAME_START_IDX,varNameEndIdx-VAR_NAME_START_IDX);
+    return str;
   }
-  return "";
 }
 
 std::string setToStr(std::vector<Value*> domain, const BitVector& includedInSet, std::string (*valFormatFunc)(Value*)) {
   std::stringstream ss;
-  ss << "{";
+  ss << "{\n";
   int numInSet = 0;
   for (int i = 0; i < domain.size(); i++) {
     if (includedInSet[i]) {
-      if (numInSet > 0) ss << " | ";
+      if (numInSet > 0) ss << " \n";
       numInSet++;
-      ss << valFormatFunc(domain[i]);
+      ss << "    " << valFormatFunc(domain[i]);
     }
   }
   ss << "}";

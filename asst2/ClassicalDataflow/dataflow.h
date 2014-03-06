@@ -18,6 +18,10 @@
 
 namespace llvm {
 
+/** Returns the variable that is defined by the given value (argument, instruction, etc.), 
+* or null if the given value is not a definition */
+Value* getDefinitionVar(Value* v);
+
 /** Util to create string representation of given BitVector */
 std::string bitVectorToStr(const BitVector& bv);
 

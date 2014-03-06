@@ -44,11 +44,13 @@ class ReachingDefinitionsDataFlow : public DataFlow {
       for (BasicBlock::iterator instruction = block->begin(); instruction != block->end(); ++instruction) {
         DenseMap<Value*, int>::const_iterator currDefIter = domainEntryToValueIdx.find(&*instruction);
         if (currDefIter != domainEntryToValueIdx.end()) {
-          //Kill prior definitions for the variable (including those in this block's gen set)
+          //Kill prior definitions for the same variable (including those in this block's gen set)
           for (DenseMap<Value*, int>::const_iterator prevDefIter = domainEntryToValueIdx.begin();
                prevDefIter != domainEntryToValueIdx.end();
                ++prevDefIter) {
-            if (prevDefIter->first->getName() == currDefIter->first->getName()) {
+            std::string prevDefStr = valueToDefinitionVarStr(prevDefIter->first);
+            std::string currDefStr = valueToDefinitionVarStr(currDefIter->first);
+            if (prevDefStr == currDefStr) {
               killSet.set(prevDefIter->second);
               genSet.reset(prevDefIter->second);
             }
@@ -78,13 +80,12 @@ class ReachingDefinitions : public FunctionPass {
 
   virtual bool runOnFunction(Function& F) {
     //Set domain = definitions in the function
-    //(since we're using SSA form, this is just the same as the set of variables in liveness analysis)
     std::vector<Value*> domain;
     for (Function::arg_iterator arg = F.arg_begin(); arg != F.arg_end(); ++arg)
       domain.push_back(arg);
     for (inst_iterator instruction = inst_begin(F), e = inst_end(F); instruction != e; ++instruction) {
-      //If instruction has a nonempty definition variable, then it defines a variable for our domain
-      if (!valueToDefinitionVarStr(&*instruction).empty())
+      //If instruction is nonempty when converted to a definition string, then it's a definition and belongs in our domain
+      if (!valueToDefinitionStr(&*instruction).empty())
         domain.push_back(&*instruction);
     }
 
@@ -107,6 +108,7 @@ class ReachingDefinitions : public FunctionPass {
     //Then, extend those values into the interior points of each block, outputting the result along the way
     errs() << "\n****************** REACHING DEFINITIONS OUTPUT FOR FUNCTION: " << F.getName() << " *****************\n";
     errs() << "Domain of values: " << setToStr(domain, BitVector(domain.size(), true), valueToDefinitionStr) << "\n";
+    errs() << "Variables: "   << setToStr(domain, BitVector(domain.size(), true), valueToDefinitionVarStr) << "\n";
 
     //Print function header (in hacky way... look for "definition" keyword in full printed function, then print rest of that line only)
     std::string funcStr = valueToStr(&F);
@@ -128,7 +130,7 @@ class ReachingDefinitions : public FunctionPass {
       std::vector<std::string> blockOutputLines;
 
       //Output reaching definitions at the IN point of this block (not strictly needed, but useful to see)
-      blockOutputLines.push_back("Reaching Defs: " + setToStr(domain, reachingDefVals, valueToDefinitionStr));
+      blockOutputLines.push_back("\nReaching Defs: " + setToStr(domain, reachingDefVals, valueToDefinitionStr) + "\n");
 
       //Iterate forward through instructions of the block, updating and outputting reaching defs
       for (BasicBlock::iterator instruction = basicBlock->begin(); instruction != basicBlock->end(); ++instruction) {
@@ -137,10 +139,13 @@ class ReachingDefinitions : public FunctionPass {
 
         DenseMap<Value*, int>::const_iterator defIter;
 
+        std::string currDefStr = valueToDefinitionVarStr(instruction);
+
         //Kill (unset) all existing defs for this variable
         //(is there a better way to do this than string comparison of the defined var names?)
         for (defIter = dataFlowResult.domainEntryToValueIdx.begin(); defIter != dataFlowResult.domainEntryToValueIdx.end(); ++defIter) {
-          if (defIter->first->getName() == instruction->getName())
+          std::string prevDefStr = valueToDefinitionVarStr(defIter->first);
+          if (prevDefStr == currDefStr)
             reachingDefVals.reset(defIter->second);
         }
 
@@ -152,7 +157,7 @@ class ReachingDefinitions : public FunctionPass {
         //Output the set of reaching definitions at program point just past instruction
         //(but only if not a phi node... those aren't "real" instructions)
         if (!isa<PHINode>(instruction))
-          blockOutputLines.push_back("Reaching Defs: " + setToStr(domain, reachingDefVals, valueToDefinitionStr));
+          blockOutputLines.push_back("\nReaching Defs: " + setToStr(domain, reachingDefVals, valueToDefinitionStr) + "\n");
       }
 
       for (std::vector<std::string>::iterator i = blockOutputLines.begin(); i < blockOutputLines.end(); ++i)
