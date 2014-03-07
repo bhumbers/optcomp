@@ -1,0 +1,17 @@
+15-745 Assigment 3
+bhumbers,
+psuresh
+
+To build the passes & benchmarks, then run the benchmarks & output to console, simply go to the directory containing 
+
+./RUN_ME.sh
+
+and run it from a console. This script isn't smart enough to run when your working directory isn't the same as the script,
+so be aware of that :(.
+
+Or, use one of the following helper scripts instead: 
+
+./build_and_dis_tests.sh:     Builds benchmarks and placed *.bc and *.ll (human-readable) files in this directory
+./do_licm_tests.sh:           Runs lli on our the benchmark *.bc files before and after applying LICM pass 
+                              (the optimized version is saved as *-opt.bc)
+
