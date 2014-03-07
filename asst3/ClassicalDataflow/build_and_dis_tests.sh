@@ -4,7 +4,7 @@ for f in ./tests/*.c
 do
   echo "Building & disassembling file: $f"
 
-  #Compile w/ optimizations
+  #Compile
   clang -O0 -mno-sse -emit-llvm -c $f
 
   fileNoPath=${f##*/}
