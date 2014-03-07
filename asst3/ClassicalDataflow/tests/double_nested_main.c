@@ -12,7 +12,7 @@ int main(void)
   int r = 10;
   for (int i = 0; i < 2*x; i++) {
     for (int j = 0; j < 12345*y; j++) {
-      for (int k = 0; k < ; k++) {
+      for (int k = 0; k < 5; k++) {
         int a = 5;
         r += a + y;
       }
