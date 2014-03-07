@@ -133,7 +133,7 @@ DataFlowResult DataFlow::run(std::vector<llvm::BasicBlock*> blocks,
       //Post-"entry" block assumed to be the first one without a predecessor
       for(std::vector<BasicBlock*>::iterator blockIter = blocks.begin(), E = blocks.end(); blockIter != E; ++blockIter) {
         if (pred_begin(*blockIter) == pred_end(*blockIter)) {
-          errs() << "Inserting fwd boundary block: " << (*blockIter)->getName().str() << "\n";
+//          errs() << "Inserting fwd boundary block: " << (*blockIter)->getName().str() << "\n";
           boundaryBlocks.insert(*blockIter);
         }
       }
@@ -171,7 +171,7 @@ DataFlowResult DataFlow::run(std::vector<llvm::BasicBlock*> blocks,
   for (std::vector<BasicBlock*>::iterator blockIter = blocks.begin(); blockIter != blocks.end(); ++blockIter) {
       std::vector<BasicBlock*> analysisPreds;
 
-      errs() << "Build predecessor list for : " << (*blockIter)->getName().str() << "\n";
+//      errs() << "Build predecessor list for : " << (*blockIter)->getName().str() << "\n";
 
       switch (direction) {
         case FORWARD:
