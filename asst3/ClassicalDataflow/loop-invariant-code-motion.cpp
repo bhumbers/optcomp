@@ -12,20 +12,26 @@
 #include "llvm/Analysis/LoopPass.h"
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/ADT/ValueMap.h"
+#include "llvm/ADT/SmallVector.h"
+
+#include "llvm/Analysis/ValueTracking.h"
 
 #include "dataflow.h"
 
 #include <iomanip>
 #include <queue>
+#include <map>
 
 using namespace llvm;
+using namespace std;
 
 namespace {
 
 //////////////////////////////////////////////////////////////////////////////////////////////
-//Dataflow analysis
-class DominanceDataFlow : public DataFlow {
+//Dataflow analyses
 
+//DOMINANCE
+class DominanceDataFlow : public DataFlow {
   protected:
     BitVector applyMeet(std::vector<BitVector> meetInputs) {
       BitVector meetResult;
@@ -54,6 +60,29 @@ class DominanceDataFlow : public DataFlow {
       return transfer;
     }
 };
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+// HELPER FUNCTION & STRUCT DECLARATIONS
+
+//struct ReachingDefinition {
+//  Value* variable = 0;
+//  std::vector<Value*> defs;
+//};
+
+/** Returns the set of blocks *which are part of the given loop*
+ * and which have at least one successor outside the loop */
+SmallPtrSet<BasicBlock*, 32> getLoopExits(Loop* L);
+
+/** Returns block dominance info using dataflow framework */
+DataFlowResult computeDominance(Loop* L);
+
+//DISABLED REACHING DEFS FOR NOW... need to run on the parent function of the loop... but how?
+///** Returns mapping from program point *just before* each instruction key to reaching definitions at that point*/
+//multimap<Instruction*, ReachingDefinition> computeReachingDefinitions(Loop* L);
+
+/** Returns set of statements (instructions) in given loop which are considered loop invariant */
+std::set<Value*>  computeLoopInvariantStatements(Loop* L);
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 class LoopInvariantCodeMotion : public LoopPass {
@@ -67,44 +96,25 @@ class LoopInvariantCodeMotion : public LoopPass {
     return false;
   }
 
-  DataFlowResult computeDominance(Loop* L) {
-    //Dataflow domain = Set of all basic blocks in the loop (as well as their parents)
-    std::set<BasicBlock*> blocksSet;
-    std::vector<BasicBlock*> loopBlocks = L->getBlocks();
-    for (std::vector<BasicBlock*>::iterator blockIter = loopBlocks.begin(); blockIter != loopBlocks.end(); ++blockIter) {
-      BasicBlock* block = *blockIter;
-      //Add parents
-      for (pred_iterator predBlock = pred_begin(block), E = pred_end(block); predBlock != E; ++predBlock)
-        blocksSet.insert(*predBlock);
-      blocksSet.insert(block); //Add block
-    }
-    std::vector<Value*> domain;
-    std::vector<BasicBlock*> blocks;
-    for (std::set<BasicBlock*>::iterator it = blocksSet.begin(); it != blocksSet.end(); ++it) {
-      blocks.push_back(*it);
-      domain.push_back(*it);
-    }
-
-    int numVars = domain.size();
-
-    //Boundary value at entry is just the entry block (entry dominates itself)
-    BitVector boundaryCond(numVars, false);
-
-    //Initial interior set is full set of blocks
-    BitVector initInteriorCond(numVars, true);
-
-    //Get dataflow values at IN and OUT points of each block
-    DominanceDataFlow flow;
-    return flow.run(blocks, domain, DataFlow::FORWARD, boundaryCond, initInteriorCond);
-  }
-
   virtual bool runOnLoop(Loop* L, LPPassManager& LPM) {
+    bool modified = false;
 
     //Don't bother with loops without a preheader
     if (L->getLoopPreheader() == NULL)
       return false;
 
     LoopInfo* loopInfo = &getAnalysis<LoopInfo>();
+
+    SmallPtrSet<BasicBlock*, 32> loopExits = getLoopExits(L);
+
+    std::set<Value*> loopInvariantStatements = computeLoopInvariantStatements(L);
+
+    //TEST: Print out loop invariant statements
+    errs() << "Loop invariant statements: {\n";
+    for (std::set<Value*>::iterator liIter = loopInvariantStatements.begin(); liIter != loopInvariantStatements.end(); ++liIter) {
+      errs() << valueToStr(*liIter);
+    }
+    errs() <<"\n}\n";
 
     //First, compute dominance info for blocks in the loop
     DataFlowResult dominanceResults = computeDominance(L);
@@ -125,7 +135,7 @@ class LoopInvariantCodeMotion : public LoopPass {
         int currIdx = dominanceResults.domainEntryToValueIdx[currAncestor];
         visited.set(currIdx);
 
-        //If ancesstor is contained in dom set for the results block, mark as idom and quit
+        //If ancestor is contained in dom set for the results block, mark as idom and quit
         if (blockResult.in[currIdx]) {
           immDoms[resultsIter->first] = currAncestor;
           break;
@@ -175,13 +185,14 @@ class LoopInvariantCodeMotion : public LoopPass {
     //  Assigned to variable not assigned to elsewhere in loop
     //  In blocks that dominate all blocks in the loop that use the variable assigned
     //TODO: Move candidates for LICM to preheader
+    //  If any moves, mark modified = true
     //  Do a DFS ordering of blocks;
     //  Move candidate to preheader if all invariant ops that it depends on have been moved
 
     //TODO: Ensure that we either iterate over loops until all LICM expressions bubble out,
     // or that we process loops from innermost to outermost ordering
 
-    return false;
+    return modified;
   }
 
   virtual void getAnalysisUsage(AnalysisUsage& AU) const {
@@ -189,6 +200,149 @@ class LoopInvariantCodeMotion : public LoopPass {
   }
 
 };
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+// HELPER FUNCTIONS DEFINITIONS
+
+SmallPtrSet<BasicBlock*, 32> getLoopExits(Loop* L) {
+  SmallVector<BasicBlock*, 32> loopSuccessors;
+  L->getUniqueExitBlocks(loopSuccessors);
+
+  SmallPtrSet<BasicBlock*, 32> loopExits;
+  for (SmallVector<BasicBlock*, 32>::iterator i = loopSuccessors.begin(); i < loopSuccessors.end(); ++i) {
+    //Note: As a result of the loop-simplify pass, each out-of-loop successor's sole predecessor should be part of this loop
+    loopExits.insert(*pred_begin(*i));
+  }
+
+  return loopExits;
+}
+
+DataFlowResult computeDominance(Loop* L) {
+  //Dataflow domain = Set of all basic blocks in the loop (as well as their parents)
+  std::set<BasicBlock*> blocksSet;
+  std::vector<BasicBlock*> loopBlocks = L->getBlocks();
+  for (std::vector<BasicBlock*>::iterator blockIter = loopBlocks.begin(); blockIter != loopBlocks.end(); ++blockIter) {
+    BasicBlock* block = *blockIter;
+    //Add parents
+    for (pred_iterator predBlock = pred_begin(block), E = pred_end(block); predBlock != E; ++predBlock)
+      blocksSet.insert(*predBlock);
+    blocksSet.insert(block); //Add block
+  }
+  std::vector<Value*> domain;
+  std::vector<BasicBlock*> blocks;
+  for (std::set<BasicBlock*>::iterator it = blocksSet.begin(); it != blocksSet.end(); ++it) {
+    blocks.push_back(*it);
+    domain.push_back(*it);
+  }
+
+  int numVars = domain.size();
+
+  //Boundary value at entry is just the entry block (entry dominates itself)
+  BitVector boundaryCond(numVars, false);
+
+  //Initial interior set is full set of blocks
+  BitVector initInteriorCond(numVars, true);
+
+  //Get dataflow values at IN and OUT points of each block
+  DominanceDataFlow flow;
+  return flow.run(blocks, domain, DataFlow::FORWARD, boundaryCond, initInteriorCond);
+}
+
+std::set<Value*>  computeLoopInvariantStatements(Loop* L) {
+  std::set<Value*> loopInvariantStatements;
+
+  //Note: We were considering reuse of our reaching definitions code from A2 to support finding invariant statements.
+  //However, that would require pre-running the reaching defs pass on the function which contains this loop, and we're
+  //not sure how to accomplish that without breaking the required "opt" command format specified in the assigment for this pass.
+  //So, hopefully it's acceptable to use LLVM's own use-def chains as an alternative?
+
+  std::vector<BasicBlock*> loopBlocks = L->getBlocks();
+
+  //Initialize invariant statement set
+  for (std::vector<BasicBlock*>::iterator blockIter = loopBlocks.begin(); blockIter != loopBlocks.end(); ++blockIter) {
+    for (BasicBlock::iterator instIter = (*blockIter)->begin(), e = (*blockIter)->end(); instIter != e; ++instIter) {
+      Value* v = instIter;
+
+      //Check if this is an easy invariance case first
+      if (isa<Constant>(v) || isa<Argument>(v) || isa<GlobalValue>(v))
+        loopInvariantStatements.insert(v);
+
+      //Otherwise, check more complex conditions for regular instructions:
+      //Statement A=B+C is invariant if both of B & C are defined outside the loop & a few other bits are met
+      else if (isa<Instruction>(v)) {
+        Instruction* I = static_cast<Instruction*>(v);
+
+        bool mightBeLoopInvariant = (isSafeToSpeculativelyExecute(I) && !I->mayReadFromMemory() && !isa<LandingPadInst>(I));
+
+        if (mightBeLoopInvariant) {
+          bool allOperandsOutsideLoop = true;
+          for (User::op_iterator opIter = I->op_begin(), e = I->op_end(); opIter != e; ++opIter) {
+            if (isa<Instruction>(*opIter)) {
+              Value* opVal = *opIter;
+              Instruction* operandInst = static_cast<Instruction*>(opVal);
+              if (L->contains(operandInst->getParent())) {
+                allOperandsOutsideLoop = false;
+                break;
+              }
+            }
+          }
+
+          if (allOperandsOutsideLoop)
+            loopInvariantStatements.insert(v);
+        }
+      }
+    }
+  }
+
+  //Iteratively update invariant statement set until convergence
+  //(since invariant will grow monotonically, we detect this simply by seeing if it stops growing)
+  bool converged = false;
+  int invariantSetSize = loopInvariantStatements.size();
+  while (!converged) {
+    int prevInvariantSetSize = invariantSetSize;
+
+    //Check through all statements in the loop, adding statement A=B+C to the invariant set if
+    //both B & C have a single reaching definition at that statement AND both B & C are loop-invariant
+
+    for (std::vector<BasicBlock*>::iterator blockIter = loopBlocks.begin(); blockIter != loopBlocks.end(); ++blockIter) {
+      for (BasicBlock::iterator instIter = (*blockIter)->begin(), e = (*blockIter)->end(); instIter != e; ++instIter) {
+        Value* v = instIter;
+        if (isa<Instruction>(v)) {
+          Instruction* I = static_cast<Instruction*>(v);
+
+          bool mightBeLoopInvariant = (isSafeToSpeculativelyExecute(I) && !I->mayReadFromMemory() && !isa<LandingPadInst>(I));
+
+          if (mightBeLoopInvariant) {
+            bool allOperandsAreLoopInvariant = true;
+            for (User::op_iterator opIter = I->op_begin(), e = I->op_end(); opIter != e; ++opIter) {
+              if (isa<Instruction>(*opIter)) {
+                Value* opVal = *opIter;
+                Instruction* operandInst = static_cast<Instruction*>(opVal);
+                bool operandIsLoopInvariant = (loopInvariantStatements.count(opVal) != 0);
+                if (!operandIsLoopInvariant) {
+                  allOperandsAreLoopInvariant = false;
+                  break;
+                }
+              }
+            }
+
+            if (allOperandsAreLoopInvariant)
+              loopInvariantStatements.insert(v);
+          }
+        }
+      }
+    }
+
+    invariantSetSize = loopInvariantStatements.size();
+    converged = (invariantSetSize == prevInvariantSetSize);
+  }
+
+
+  return loopInvariantStatements;
+}
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////
 
 char LoopInvariantCodeMotion::ID = 0;
 RegisterPass<LoopInvariantCodeMotion> X("cd-licm", "15-745 Loop Invariant Code Motion");
