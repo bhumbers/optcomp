@@ -14,4 +14,7 @@ do
 
   echo "Post-optimization results: "
   lli -stats -force-interpreter $optimizedFile
+
+  #Disassemble optimized bitcode for inspection
+  llvm-dis $optimizedFile
 done

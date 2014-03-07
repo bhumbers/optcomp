@@ -102,83 +102,15 @@ bool LoopInvariantCodeMotion::runOnFunction(Function& F) {
 
     std::set<Value*> loopInvariantStatements = computeLoopInvariantStatements(L, reachingDefs);
 
-    //TEST: Print out loop invariant statements
-    errs() << "Loop invariant statements: {\n";
-    for (std::set<Value*>::iterator liIter = loopInvariantStatements.begin(); liIter != loopInvariantStatements.end(); ++liIter) {
-      errs() << valueToStr(*liIter) << "\n";
-    }
-    errs() << "}\n";
-
-    //First, compute dominance info for blocks in the loop
+    //Compute dominance info for blocks in the loop
     DataFlowResult dominanceResults = computeDominance(L);
-    //Then, find the immediate dominators in a somewhat less-than-optimally-efficient way: basically,
-    //for each block B, walk up the graph toward the root of the CFG in a BFS ordering until we see a node in dom(B)
-    //There appear to be better idom algorithms, but I wasn't sure how to make them work nicely with our dataflow framework.
-    ValueMap<BasicBlock*, BasicBlock*> immDoms;
-    for (map<BasicBlock*, DataFlowResultForBlock>::iterator resultsIter = dominanceResults.resultsByBlock.begin();
-           resultsIter != dominanceResults.resultsByBlock.end();
-           ++resultsIter) {
-      DataFlowResultForBlock& blockResult = resultsIter->second;
-      BitVector visited(dominanceResults.resultsByBlock.size(), false);
-      std::queue<BasicBlock*> work;
-      work.push(resultsIter->first);
-      while (!work.empty()) {
-        BasicBlock* currAncestor = work.front();
-        work.pop();
-        int currIdx = dominanceResults.domainEntryToValueIdx[currAncestor];
-        visited.set(currIdx);
+    map<BasicBlock*, BasicBlock*> immDoms = computeImmediateDominance(dominanceResults);
 
-//        errs() << "Checking if idom of block " << resultsIter->first->getName() << " is " << currAncestor->getName() << "\n";
-
-        //If ancestor is contained in dom set for the results block, mark as idom and quit
-        if (blockResult.in[currIdx]) {
-          immDoms[resultsIter->first] = currAncestor;
-          break;
-        }
-
-        for (pred_iterator predBlock = pred_begin(currAncestor), E = pred_end(currAncestor); predBlock != E; ++predBlock) {
-          int predIdx = dominanceResults.domainEntryToValueIdx[*predBlock];
-          if (!visited[predIdx]) {
-            work.push(*predBlock);
-          }
-        }
-      }
-    }
-
-    errs() << "Dominance domain: {";
-    for (map<BasicBlock*, DataFlowResultForBlock>::iterator resultsIter = dominanceResults.resultsByBlock.begin();
-           resultsIter != dominanceResults.resultsByBlock.end();
-           ++resultsIter) {
-      errs() << resultsIter->first->getName() << "  ";
-    }
-    errs() << "}\n";
-
-    //Output: Print all
-    for (map<BasicBlock*, DataFlowResultForBlock>::iterator resultsIter = dominanceResults.resultsByBlock.begin();
-           resultsIter != dominanceResults.resultsByBlock.end();
-           ++resultsIter) {
-      char str[100];
-      BasicBlock* idom = immDoms[resultsIter->first];
-      if (idom) {
-        sprintf(str, "%-30s is idom'd by %-30s", ((std::string)resultsIter->first->getName()).c_str(), ((std::string)idom->getName()).c_str());
-        errs() << str << "\n";
-      }
-      else {
-        sprintf(str, "%-30s has no idom", ((std::string)resultsIter->first->getName()).c_str());
-        errs() << str << "\n";
-      }
-//      sprintf(str, "Dominators for %-20s:", ((std::string)resultsIter->first->getName()).c_str());
-//      errs() << str << bitVectorToStr(resultsIter->second.in) << "\n";
-    }
+    printDominanceInfo(dominanceResults, immDoms);
 
     LQ.pop_back();
   }
 
-  //TODO: Mark candidate statements for motion. Necessary conditions:
-  //  Loop invariant
-  //  In blocks that dominate all loop exits
-  //  Assigned to variable not assigned to elsewhere in loop
-  //  In blocks that dominate all blocks in the loop that use the variable assigned
   //TODO: Move candidates for LICM to preheader
   //  If any moves, mark modified = true
   //  Do a DFS ordering of blocks;
@@ -237,6 +169,73 @@ DataFlowResult LoopInvariantCodeMotion::computeDominance(Loop* L) {
   return flow.run(blocks, domain, DataFlow::FORWARD, boundaryCond, initInteriorCond);
 }
 
+map<BasicBlock*, BasicBlock*> LoopInvariantCodeMotion::computeImmediateDominance(DataFlowResult dominanceResults) {
+  map<BasicBlock*, BasicBlock*> immDoms;
+
+  //We find the immediate dominators in a somewhat less-than-optimally-efficient way: basically,
+  //for each block B, walk up the graph toward the root of the CFG in a BFS ordering until we see a node in dom(B)
+  //There appear to be better idom algorithms, but I wasn't sure how to make them work nicely with our dataflow framework.
+
+  for (map<BasicBlock*, DataFlowResultForBlock>::iterator resultsIter = dominanceResults.resultsByBlock.begin();
+         resultsIter != dominanceResults.resultsByBlock.end();
+         ++resultsIter) {
+    DataFlowResultForBlock& blockResult = resultsIter->second;
+    BitVector visited(dominanceResults.resultsByBlock.size(), false);
+    std::queue<BasicBlock*> work;
+    work.push(resultsIter->first);
+    while (!work.empty()) {
+      BasicBlock* currAncestor = work.front();
+      work.pop();
+      int currIdx = dominanceResults.domainEntryToValueIdx[currAncestor];
+      visited.set(currIdx);
+
+//      errs() << "Checking if idom of block " << resultsIter->first->getName() << " is " << currAncestor->getName() << "\n";
+
+      //If ancestor is contained in dom set for the results block, mark as idom and quit
+      if (blockResult.in[currIdx]) {
+        immDoms[resultsIter->first] = currAncestor;
+        break;
+      }
+
+      for (pred_iterator predBlock = pred_begin(currAncestor), E = pred_end(currAncestor); predBlock != E; ++predBlock) {
+        int predIdx = dominanceResults.domainEntryToValueIdx[*predBlock];
+        if (!visited[predIdx]) {
+          work.push(*predBlock);
+        }
+      }
+    }
+  }
+
+  return immDoms;
+}
+
+void LoopInvariantCodeMotion::printDominanceInfo(DataFlowResult dominanceResults, map<BasicBlock*, BasicBlock*> immDoms) {
+  //Output: Print immediate dominance information
+  errs() << "Dominance domain: {";
+  for (map<BasicBlock*, DataFlowResultForBlock>::iterator resultsIter = dominanceResults.resultsByBlock.begin();
+         resultsIter != dominanceResults.resultsByBlock.end();
+         ++resultsIter) {
+    errs() << resultsIter->first->getName() << "  ";
+  }
+  errs() << "}\n";
+  for (map<BasicBlock*, DataFlowResultForBlock>::iterator resultsIter = dominanceResults.resultsByBlock.begin();
+         resultsIter != dominanceResults.resultsByBlock.end();
+         ++resultsIter) {
+    char str[100];
+    BasicBlock* idom = immDoms[resultsIter->first];
+    if (idom) {
+      sprintf(str, "%s is idom'd by %s", ((std::string)resultsIter->first->getName()).c_str(), ((std::string)idom->getName()).c_str());
+      errs() << str << "\n";
+    }
+    else {
+      sprintf(str, "%s has no idom", ((std::string)resultsIter->first->getName()).c_str());
+      errs() << str << "\n";
+    }
+//      sprintf(str, "Dominators for %-20s:", ((std::string)resultsIter->first->getName()).c_str());
+//      errs() << str << bitVectorToStr(resultsIter->second.in) << "\n";
+  }
+}
+
 std::set<Value*>  LoopInvariantCodeMotion::computeLoopInvariantStatements(Loop* L, map<Value*, ReachingDefinitionInfo> reachingDefs) {
   std::set<Value*> loopInvariantStatements;
 
@@ -256,6 +255,8 @@ std::set<Value*>  LoopInvariantCodeMotion::computeLoopInvariantStatements(Loop* 
       //(and a few other misc safety conditions are met)
       else if (isa<Instruction>(v)) {
         Instruction* I = static_cast<Instruction*>(v);
+
+//        errs() << "Considering invariance of: " << valueToStr(v) << "\n";
 
         bool mightBeLoopInvariant = (isSafeToSpeculativelyExecute(I) && !I->mayReadFromMemory() && !isa<LandingPadInst>(I));
 
@@ -301,6 +302,8 @@ std::set<Value*>  LoopInvariantCodeMotion::computeLoopInvariantStatements(Loop* 
       for (BasicBlock::iterator instIter = (*blockIter)->begin(), e = (*blockIter)->end(); instIter != e; ++instIter) {
         Value* v = instIter;
 
+//        errs() << "Considering invariance of: " << valueToDefinitionVarStr(v) << "\n";
+
         //If already known to be invariant, skip checking again
         if (loopInvariantStatements.find(v) != loopInvariantStatements.end())
           continue;
@@ -336,7 +339,43 @@ std::set<Value*>  LoopInvariantCodeMotion::computeLoopInvariantStatements(Loop* 
     converged = (invariantSetSize == prevInvariantSetSize);
   }
 
+  //DEBUGGING: Print out loop invariant statements
+  errs() << "Loop invariant statements: {\n";
+  for (std::set<Value*>::iterator liIter = loopInvariantStatements.begin(); liIter != loopInvariantStatements.end(); ++liIter) {
+    errs() << valueToStr(*liIter) << "\n";
+  }
+  errs() << "}\n";
+
   return loopInvariantStatements;
+}
+
+set<Value*> LoopInvariantCodeMotion::computeCodeMotionCandidateStatements(Loop* L, set<Value*> invariantStatements) {
+  set<Value*> motionCandidates;
+
+  //Candidate statements for LICM must meet the following:
+  //1) Must be loop invariant
+  //2) Must be in a block that dominates all exits of the loop
+  //3) Must be in a block that dominates all blocks where the definition variable of the statement is used
+  //4) Must assign to a variable that has no other assignments in the loop
+
+  std::vector<BasicBlock*> loopBlocks = L->getBlocks();
+
+  for (std::vector<BasicBlock*>::iterator blockIter = loopBlocks.begin(); blockIter != loopBlocks.end(); ++blockIter) {
+    for (BasicBlock::iterator instIter = (*blockIter)->begin(), e = (*blockIter)->end(); instIter != e; ++instIter) {
+      Instruction* I = instIter;
+
+      bool isInvariant = false;
+      if (invariantStatements.count(I) > 0)
+        isInvariant = true;
+
+
+      //TODO: Check other conditions
+      if (isInvariant)
+        motionCandidates.insert(I);
+    }
+  }
+
+  return motionCandidates;
 }
 
 void LoopInvariantCodeMotion::addLoopIntoQueue(Loop* L) {

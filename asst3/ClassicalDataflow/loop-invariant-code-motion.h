@@ -56,8 +56,16 @@ class LoopInvariantCodeMotion : public FunctionPass {
   /** Returns block dominance info using dataflow framework */
   DataFlowResult computeDominance(Loop* L);
 
+  /** Computes immediate dominance info given dataflow results with basic dominance info */
+  map<BasicBlock*, BasicBlock*> computeImmediateDominance(DataFlowResult dominanceResults);
+
+  void printDominanceInfo(DataFlowResult dominanceResults, map<BasicBlock*, BasicBlock*> immDoms);
+
   /** Returns set of statements (instructions) in given loop which are considered loop invariant */
   set<Value*> computeLoopInvariantStatements(Loop* L, map<Value*, ReachingDefinitionInfo> reachingDefs);
+
+  /** Returns the set of statements (instructions) in given loop which are valid candidates for movement to loop preheader according to LICM*/
+  set<Value*> computeCodeMotionCandidateStatements(Loop* L, set<Value*> invariantStatements);
 
   /** Recurse through all subloops and all loops  into LQ. (Source: LoopPass.cpp) */
   void addLoopIntoQueue(Loop* L);

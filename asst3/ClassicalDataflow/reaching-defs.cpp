@@ -14,8 +14,8 @@ class ReachingDefinitionsDataFlow : public DataFlow {
       //Meet op = union of inputs
       if (!meetInputs.empty()) {
         for (int i = 0; i < meetInputs.size(); i++) {
-          if (i > 0) errs() << ", ";
-          errs() << bitVectorToStr(meetInputs[i]);
+//          if (i > 0) errs() << ", ";
+//          errs() << bitVectorToStr(meetInputs[i]);
           if (i == 0)
             meetResult = meetInputs[i];
           else
@@ -110,15 +110,15 @@ map<Value*, ReachingDefinitionInfo> ReachingDefinitions::computeReachingDefiniti
   DataFlowResult dataFlowResult = flow.run(blocks, domain, DataFlow::FORWARD, boundaryCond, initInteriorCond);
 
   //Then, extend those values into the interior points of each block, outputting the result along the way
-  errs() << "\n****************** REACHING DEFINITIONS OUTPUT FOR FUNCTION: " << F.getName() << " *****************\n";
-  errs() << "Domain of values: " << setToStr(domain, BitVector(domain.size(), true), valueToDefinitionStr) << "\n";
-  errs() << "Variables: "   << setToStr(domain, BitVector(domain.size(), true), valueToDefinitionVarStr) << "\n";
+//  errs() << "\n****************** REACHING DEFINITIONS OUTPUT FOR FUNCTION: " << F.getName() << " *****************\n";
+//  errs() << "Domain of values: " << setToStr(domain, BitVector(domain.size(), true), valueToDefinitionStr) << "\n";
+//  errs() << "Variables: "   << setToStr(domain, BitVector(domain.size(), true), valueToDefinitionVarStr) << "\n";
 
   //Print function header (in hacky way... look for "definition" keyword in full printed function, then print rest of that line only)
   std::string funcStr = valueToStr(&F);
   int funcHeaderStartIdx = funcStr.find("define");
   int funcHeaderEndIdx = funcStr.find('{', funcHeaderStartIdx + 1);
-  errs() << funcStr.substr(funcHeaderStartIdx, funcHeaderEndIdx-funcHeaderStartIdx) << "\n";
+//  errs() << funcStr.substr(funcHeaderStartIdx, funcHeaderEndIdx-funcHeaderStartIdx) << "\n";
 
   //Now, use dataflow results to output reaching definitions at program points within each block
   for (Function::iterator basicBlock = F.begin(); basicBlock != F.end(); ++basicBlock) {
@@ -126,7 +126,7 @@ map<Value*, ReachingDefinitionInfo> ReachingDefinitions::computeReachingDefiniti
 
     //Print just the header line of the block (in a hacky way... blocks start w/ newline, so look for first occurrence of newline beyond first char
     std::string basicBlockStr = valueToStr(basicBlock);
-    errs() << basicBlockStr.substr(0, basicBlockStr.find(':', 1) + 1) << "\n";
+//    errs() << basicBlockStr.substr(0, basicBlockStr.find(':', 1) + 1) << "\n";
 
     //Initialize reaching definitions at the start of the block
     BitVector reachingDefVals = blockReachingDefVals.in;
@@ -170,9 +170,9 @@ map<Value*, ReachingDefinitionInfo> ReachingDefinitions::computeReachingDefiniti
           reachingDefVals.set((*defIter).second);
       }
 
-      //CONSOLE OUTPUT ONLY (for debugging)
+      //Add debugging output lines for the reaching defs
       {
-      //Output the instruction contents
+        //Output the instruction contents
         blockOutputLines.push_back(valueToStr(&*instruction));
 
         //Output the set of reaching definitions at program point just past instruction
@@ -183,10 +183,11 @@ map<Value*, ReachingDefinitionInfo> ReachingDefinitions::computeReachingDefiniti
       }
     }
 
-    for (std::vector<std::string>::iterator i = blockOutputLines.begin(); i < blockOutputLines.end(); ++i)
-      errs() << *i << "\n";
+    //CONSOLE OUTPUT (for debugging)
+//    for (std::vector<std::string>::iterator i = blockOutputLines.begin(); i < blockOutputLines.end(); ++i)
+//      errs() << *i << "\n";
   }
-  errs() << "****************** END REACHING DEFINITION OUTPUT FOR FUNCTION: " << F.getName() << " ******************\n\n";
+//  errs() << "****************** END REACHING DEFINITION OUTPUT FOR FUNCTION: " << F.getName() << " ******************\n\n";
 
   return reachingDefs;
 }
