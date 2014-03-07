@@ -90,7 +90,7 @@ bool LoopInvariantCodeMotion::runOnFunction(Function& F) {
   for (LoopInfo::reverse_iterator I = LI.rbegin(), E = LI.rend(); I != E; ++I)
     addLoopIntoQueue(*I);
 
-  //Process each loop in the work queue
+  //Apply LICM to each loop in the work queue
   while (!LQ.empty()) {
     Loop* L  = LQ.back();
 
@@ -98,15 +98,17 @@ bool LoopInvariantCodeMotion::runOnFunction(Function& F) {
     if (L->getLoopPreheader() == NULL)
       return false;
 
-    SmallPtrSet<BasicBlock*, 32> loopExits = getLoopExits(L);
-
-    std::set<Value*> loopInvariantStatements = computeLoopInvariantStatements(L, reachingDefs);
-
-    //Compute dominance info for blocks in the loop
     DataFlowResult dominanceResults = computeDominance(L);
     map<BasicBlock*, BasicBlock*> immDoms = computeImmediateDominance(dominanceResults);
-
     printDominanceInfo(dominanceResults, immDoms);
+
+    set<Value*> loopInvariantStatements = computeLoopInvariantStatements(L, reachingDefs);
+
+    set<Value*> codeMotionCandidateStatements = computeCodeMotionCandidateStatements(L, loopInvariantStatements);
+
+    bool loopModified = applyMotionToCandidates(L, codeMotionCandidateStatements);
+
+    modified |= loopModified;
 
     LQ.pop_back();
   }
@@ -359,6 +361,7 @@ set<Value*> LoopInvariantCodeMotion::computeCodeMotionCandidateStatements(Loop* 
   //4) Must assign to a variable that has no other assignments in the loop
 
   std::vector<BasicBlock*> loopBlocks = L->getBlocks();
+  SmallPtrSet<BasicBlock*, 32> loopExits = getLoopExits(L);
 
   for (std::vector<BasicBlock*>::iterator blockIter = loopBlocks.begin(); blockIter != loopBlocks.end(); ++blockIter) {
     for (BasicBlock::iterator instIter = (*blockIter)->begin(), e = (*blockIter)->end(); instIter != e; ++instIter) {
@@ -376,6 +379,60 @@ set<Value*> LoopInvariantCodeMotion::computeCodeMotionCandidateStatements(Loop* 
   }
 
   return motionCandidates;
+}
+
+bool LoopInvariantCodeMotion::applyMotionToCandidates(Loop* L, set<Value*> motionCandidates) {
+  bool motionApplied = false;
+
+  BasicBlock* preheader = L->getLoopPreheader();
+
+  set<Instruction*> toMoveSet;
+
+  //Algorithm: Do a DFS over the blocks of the loop and move each candidate to end of preheader if all
+  //of its dependencies have also been moved to the preheader
+
+  set<BasicBlock*> visited;
+
+  stack<BasicBlock*> work;
+  work.push(*succ_begin(preheader)); //start at loop header... the sole successor of the pre-header
+  while (!work.empty()) {
+    BasicBlock* block = work.top();
+    work.pop();
+    visited.insert(block);
+
+    //For each instruction in the block, move to preheader if it's a code motion candidate and conditions are met
+    for (BasicBlock::iterator instIter = block->begin(), e = block->end(); instIter != e; ++instIter) {
+      Instruction* I = instIter;
+
+      if (motionCandidates.count(I) > 0) {
+        //TODO: Check that all invariant ops that this instruction uses are moved to preheader as well
+
+        motionApplied = true;
+        toMoveSet.insert(I);
+      }
+    }
+
+    //Add successors to search
+    for (succ_iterator successorBlock = succ_begin(block), E = succ_end(block); successorBlock != E; ++successorBlock) {
+      if (visited.count(*successorBlock) == 0)
+        work.push(*successorBlock);
+    }
+  }
+
+  //Move all the to-move items now (a bit too tricky to do it while iterating over blocks)
+  for (set<Instruction*>::iterator it = toMoveSet.begin(); it != toMoveSet.end(); ++it) {
+    Instruction* instructionToMove = *it;
+
+    //Insert as the next-to-last instruction of preheader (last needs to remain the block's control flow branch)
+    Instruction* preheaderEnd = &(preheader->back());
+
+    errs() << "Preheader end: " << valueToStr(preheaderEnd) << "\n";
+
+    instructionToMove->removeFromParent();
+    instructionToMove->insertBefore(preheaderEnd);
+  }
+
+  return motionApplied;
 }
 
 void LoopInvariantCodeMotion::addLoopIntoQueue(Loop* L) {

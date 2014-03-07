@@ -67,6 +67,10 @@ class LoopInvariantCodeMotion : public FunctionPass {
   /** Returns the set of statements (instructions) in given loop which are valid candidates for movement to loop preheader according to LICM*/
   set<Value*> computeCodeMotionCandidateStatements(Loop* L, set<Value*> invariantStatements);
 
+  /** Applies LICM to given candidates where possible (basically, if all dependencies have also been moved).
+   * Returns true if any motions were applied, which modifies the loop code */
+  bool applyMotionToCandidates(Loop* L, set<Value*> motionCandidates);
+
   /** Recurse through all subloops and all loops  into LQ. (Source: LoopPass.cpp) */
   void addLoopIntoQueue(Loop* L);
 };
