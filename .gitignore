@@ -16,6 +16,9 @@
 *.ll
 *.bc
 
+# Code listing PS files
+*.ps
+
 *.c~
 
 #Misc
