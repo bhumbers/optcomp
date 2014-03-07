@@ -69,6 +69,16 @@ class DominanceDataFlow : public DataFlow {
       return transfer;
     }
 };
+
+//Helper for checking dominance. Returns true if A dominates B according to given results
+bool dominates(BasicBlock* A, BasicBlock* B, DataFlowResult dominanceResults) {
+//  errs() << "Checking whether " << A->getName() << " dominates " << B->getName() << "...";
+  DataFlowResultForBlock dominanceOfB = dominanceResults.resultsByBlock[B];
+  bool aDomsB = dominanceOfB.out[dominanceResults.domainEntryToValueIdx[A]];
+//  errs() << (aDomsB ? "YES" : "NO") << "\n";
+  return aDomsB;
+}
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 LoopInvariantCodeMotion::LoopInvariantCodeMotion() : FunctionPass(ID) { }
@@ -104,7 +114,7 @@ bool LoopInvariantCodeMotion::runOnFunction(Function& F) {
 
     set<Value*> loopInvariantStatements = computeLoopInvariantStatements(L, reachingDefs);
 
-    set<Value*> codeMotionCandidateStatements = computeCodeMotionCandidateStatements(L, loopInvariantStatements);
+    set<Value*> codeMotionCandidateStatements = computeCodeMotionCandidateStatements(L, dominanceResults, loopInvariantStatements);
 
     bool loopModified = applyMotionToCandidates(L, codeMotionCandidateStatements);
 
@@ -112,11 +122,6 @@ bool LoopInvariantCodeMotion::runOnFunction(Function& F) {
 
     LQ.pop_back();
   }
-
-  //TODO: Move candidates for LICM to preheader
-  //  If any moves, mark modified = true
-  //  Do a DFS ordering of blocks;
-  //  Move candidate to preheader if all invariant ops that it depends on have been moved
 
   return modified;
 }
@@ -220,6 +225,9 @@ void LoopInvariantCodeMotion::printDominanceInfo(DataFlowResult dominanceResults
     errs() << resultsIter->first->getName() << "  ";
   }
   errs() << "}\n";
+
+  errs() << "\nImmediate Dominance Relationships: \n";
+
   for (map<BasicBlock*, DataFlowResultForBlock>::iterator resultsIter = dominanceResults.resultsByBlock.begin();
          resultsIter != dominanceResults.resultsByBlock.end();
          ++resultsIter) {
@@ -236,6 +244,8 @@ void LoopInvariantCodeMotion::printDominanceInfo(DataFlowResult dominanceResults
 //      sprintf(str, "Dominators for %-20s:", ((std::string)resultsIter->first->getName()).c_str());
 //      errs() << str << bitVectorToStr(resultsIter->second.in) << "\n";
   }
+
+  errs() << "\n";
 }
 
 std::set<Value*>  LoopInvariantCodeMotion::computeLoopInvariantStatements(Loop* L, map<Value*, ReachingDefinitionInfo> reachingDefs) {
@@ -346,18 +356,18 @@ std::set<Value*>  LoopInvariantCodeMotion::computeLoopInvariantStatements(Loop* 
   for (std::set<Value*>::iterator liIter = loopInvariantStatements.begin(); liIter != loopInvariantStatements.end(); ++liIter) {
     errs() << valueToStr(*liIter) << "\n";
   }
-  errs() << "}\n";
+  errs() << "}\n\n";
 
   return loopInvariantStatements;
 }
 
-set<Value*> LoopInvariantCodeMotion::computeCodeMotionCandidateStatements(Loop* L, set<Value*> invariantStatements) {
+set<Value*> LoopInvariantCodeMotion::computeCodeMotionCandidateStatements(Loop* L, DataFlowResult dominanceResults, set<Value*> invariantStatements) {
   set<Value*> motionCandidates;
 
   //Candidate statements for LICM must meet the following:
   //1) Must be loop invariant
   //2) Must be in a block that dominates all exits of the loop
-  //3) Must be in a block that dominates all blocks where the definition variable of the statement is used
+  //3) Must be in a block that dominates all blocks in the loop where the definition variable of the statement is used
   //4) Must assign to a variable that has no other assignments in the loop
 
   std::vector<BasicBlock*> loopBlocks = L->getBlocks();
@@ -367,14 +377,64 @@ set<Value*> LoopInvariantCodeMotion::computeCodeMotionCandidateStatements(Loop* 
     for (BasicBlock::iterator instIter = (*blockIter)->begin(), e = (*blockIter)->end(); instIter != e; ++instIter) {
       Instruction* I = instIter;
 
-      bool isInvariant = false;
-      if (invariantStatements.count(I) > 0)
-        isInvariant = true;
+//      errs() << "Looking at whether to make LICM candidate: " << valueToStr(I) << "\n";
+
+      //Check invariance
+      if (invariantStatements.count(I) == 0)
+        continue;
+
+      //Check exit dominance
+      bool isInExitDominatingBlock = true;
+      for (SmallPtrSet<BasicBlock*, 32>::iterator loopExitIter = loopExits.begin(); loopExitIter != loopExits.end(); ++loopExitIter) {
+        //If this block doens't dominate this exit, it's not an exit dominating block
+        if (!dominates(*blockIter, *loopExitIter, dominanceResults)) {
+          isInExitDominatingBlock = false;
+          break;
+        }
+      }
+      if (!isInExitDominatingBlock)
+        continue;
+
+      //Check whether statement dominates other uses of the assigned variable in the block
+      bool dominatesAllUseBlocksInLoop = true;
+      Value* assignedVar = getDefinitionVar(I);
+      if (assignedVar) {
+        for (Value::use_iterator useIter = assignedVar->use_begin(), e = assignedVar->use_end(); useIter != e; ++useIter) {
+          if (Instruction* userInstruction = dyn_cast<Instruction>(*useIter)) {
+            BasicBlock* userBlock = userInstruction->getParent();
+            if (L->contains(userBlock) && !dominates(*blockIter, userBlock, dominanceResults)) {
+              dominatesAllUseBlocksInLoop = false;
+              break;
+            }
+          }
+        }
+      }
+      if (!dominatesAllUseBlocksInLoop)
+        continue;
 
 
-      //TODO: Check other conditions
-      if (isInvariant)
-        motionCandidates.insert(I);
+      //Check whether assigned variable has any other assignments in loop... not a candidate if so
+      bool hasNoOtherAssignmentsInLoop = true;
+      if (assignedVar) {
+        string assignedVarStr = valueToDefinitionVarStr(assignedVar);
+        //Inefficient, but just loop over all instructions again, checking for other assignments to the same var
+        for (std::vector<BasicBlock*>::iterator blockIter = loopBlocks.begin(); blockIter != loopBlocks.end(); ++blockIter) {
+          for (BasicBlock::iterator otherInstIter = (*blockIter)->begin(), e = (*blockIter)->end(); otherInstIter != e; ++otherInstIter) {
+            if (otherInstIter != instIter && valueToDefinitionVarStr(otherInstIter) == assignedVarStr) {
+              hasNoOtherAssignmentsInLoop = false;
+              break;
+            }
+          }
+          if (hasNoOtherAssignmentsInLoop)
+            break;
+        }
+      }
+      if (!hasNoOtherAssignmentsInLoop)
+        continue;
+
+
+      //At this point, we know this statement is a good LICM candidate
+      motionCandidates.insert(I);
     }
   }
 
@@ -405,8 +465,6 @@ bool LoopInvariantCodeMotion::applyMotionToCandidates(Loop* L, set<Value*> motio
       Instruction* I = instIter;
 
       if (motionCandidates.count(I) > 0) {
-        //TODO: Check that all invariant ops that this instruction uses are moved to preheader as well
-
         motionApplied = true;
         toMoveSet.insert(I);
       }
@@ -414,8 +472,10 @@ bool LoopInvariantCodeMotion::applyMotionToCandidates(Loop* L, set<Value*> motio
 
     //Add successors to search
     for (succ_iterator successorBlock = succ_begin(block), E = succ_end(block); successorBlock != E; ++successorBlock) {
-      if (visited.count(*successorBlock) == 0)
-        work.push(*successorBlock);
+      if (L->contains(*successorBlock)) {
+        if (visited.count(*successorBlock) == 0)
+          work.push(*successorBlock);
+      }
     }
   }
 
@@ -426,7 +486,7 @@ bool LoopInvariantCodeMotion::applyMotionToCandidates(Loop* L, set<Value*> motio
     //Insert as the next-to-last instruction of preheader (last needs to remain the block's control flow branch)
     Instruction* preheaderEnd = &(preheader->back());
 
-    errs() << "Preheader end: " << valueToStr(preheaderEnd) << "\n";
+//    errs() << "Preheader end: " << valueToStr(preheaderEnd) << "\n";
 
     instructionToMove->removeFromParent();
     instructionToMove->insertBefore(preheaderEnd);

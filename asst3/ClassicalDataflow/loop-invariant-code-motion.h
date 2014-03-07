@@ -65,7 +65,7 @@ class LoopInvariantCodeMotion : public FunctionPass {
   set<Value*> computeLoopInvariantStatements(Loop* L, map<Value*, ReachingDefinitionInfo> reachingDefs);
 
   /** Returns the set of statements (instructions) in given loop which are valid candidates for movement to loop preheader according to LICM*/
-  set<Value*> computeCodeMotionCandidateStatements(Loop* L, set<Value*> invariantStatements);
+  set<Value*> computeCodeMotionCandidateStatements(Loop* L, DataFlowResult dominanceResults, set<Value*> invariantStatements);
 
   /** Applies LICM to given candidates where possible (basically, if all dependencies have also been moved).
    * Returns true if any motions were applied, which modifies the loop code */

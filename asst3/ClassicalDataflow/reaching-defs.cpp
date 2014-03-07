@@ -1,3 +1,7 @@
+////////////////////////////////////////////////////////////////////////////////
+// 15-745 S14 Assignment 3
+// Group: bhumbers, psuresh
+////////////////////////////////////////////////////////////////////////////////
 
 #include "reaching-defs.h"
 
@@ -73,7 +77,7 @@ class ReachingDefinitionsDataFlow : public DataFlow {
 map<Value*, ReachingDefinitionInfo> ReachingDefinitions::computeReachingDefinitions(Function& F) {
   map<Value*, ReachingDefinitionInfo> reachingDefs;
 
-  //TODO: Handle SSA aliasing correctly
+  //NOTE: Unfortunately, we don't have enought time to handle SSA aliasing correctly
 
   //Set domain = definitions in the function
   std::vector<Value*> domain;

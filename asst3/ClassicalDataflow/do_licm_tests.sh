@@ -2,7 +2,10 @@
 
 for f in *_main.bc
 do
+  echo ""
+  echo "-----------------------------------------------------------------------------------------------"
   echo "Running LICM benchmark: $f"
+  echo ""
 
   fileNoPath=${f##*/}
   optimizedFile=${fileNoPath%.*}-opt.bc
@@ -17,4 +20,9 @@ do
 
   #Disassemble optimized bitcode for inspection
   llvm-dis $optimizedFile
+
+  echo ""
+  echo "End of LICM benchmark: $f"
+  echo "-----------------------------------------------------------------------------------------------"
+  echo ""
 done

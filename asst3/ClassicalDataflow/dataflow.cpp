@@ -126,15 +126,28 @@ DataFlowResult DataFlow::run(std::vector<llvm::BasicBlock*> blocks,
   for (int i = 0; i < domain.size(); i++)
     domainEntryToValueIdx[domain[i]] = i;
 
+  std::set<BasicBlock*> blocksSet;
+  for (int i = 0; i < blocks.size(); i++) blocksSet.insert(blocks[i]);
+
   //Set initial val for boundary blocks, which depend on direction of analysis
   std::set<BasicBlock*> boundaryBlocks;
   switch (direction) {
     case FORWARD:
-      //Post-"entry" block assumed to be the first one without a predecessor
+      //Post-"entry" block assumed to be the first one without a predecessor, or whose predecessors aren't in the given blocks list
       for(std::vector<BasicBlock*>::iterator blockIter = blocks.begin(), E = blocks.end(); blockIter != E; ++blockIter) {
         if (pred_begin(*blockIter) == pred_end(*blockIter)) {
-//          errs() << "Inserting fwd boundary block: " << (*blockIter)->getName().str() << "\n";
           boundaryBlocks.insert(*blockIter);
+        }
+        else {
+         bool predsNotInList = true;
+         for (pred_iterator predBlock = pred_begin((*blockIter)), E = pred_end((*blockIter)); predBlock != E; ++predBlock) {
+           if (blocksSet.count(*predBlock) > 0) {
+            predsNotInList = false;
+            break;
+           }
+         }
+         if (predsNotInList)
+           boundaryBlocks.insert(*blockIter);
         }
       }
       break;
@@ -174,21 +187,26 @@ DataFlowResult DataFlow::run(std::vector<llvm::BasicBlock*> blocks,
   }
 
   //Generate analysis "predecessor" list for each block (depending on direction of analysis)
+  //Note that we only include as predecessors those blocks which are included in the input list
   //Will be used to drive the meet inputs.
   DenseMap<BasicBlock*, std::vector<BasicBlock*> > analysisPredsByBlock;
   for (std::vector<BasicBlock*>::iterator blockIter = blocks.begin(); blockIter != blocks.end(); ++blockIter) {
       std::vector<BasicBlock*> analysisPreds;
 
-//      errs() << "Build predecessor list for : " << (*blockIter)->getName().str() << "\n";
+//      errs() << "Building predecessor list for : " << (*blockIter)->getName().str() << "\n";
 
       switch (direction) {
         case FORWARD:
-        for (pred_iterator predBlock = pred_begin((*blockIter)), E = pred_end((*blockIter)); predBlock != E; ++predBlock)
-            analysisPreds.push_back(*predBlock);
+          for (pred_iterator predBlock = pred_begin((*blockIter)), E = pred_end((*blockIter)); predBlock != E; ++predBlock) {
+            if (blocksSet.count(*predBlock) > 0)
+              analysisPreds.push_back(*predBlock);
+          }
           break;
         case BACKWARD:
-          for (succ_iterator succBlock = succ_begin((*blockIter)), E = succ_end((*blockIter)); succBlock != E; ++succBlock)
-            analysisPreds.push_back(*succBlock);
+          for (succ_iterator succBlock = succ_begin((*blockIter)), E = succ_end((*blockIter)); succBlock != E; ++succBlock) {
+            if (blocksSet.count(*succBlock) > 0)
+              analysisPreds.push_back(*succBlock);
+          }
           break;
       }
 
