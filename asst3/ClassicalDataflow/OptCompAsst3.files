@@ -1,3 +1,6 @@
 dataflow.cpp
 dataflow.h
 loop-invariant-code-motion.cpp
+loop-invariant-code-motion.h
+reaching-defs.h
+reaching-defs.cpp

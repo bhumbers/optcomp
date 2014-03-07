@@ -10,4 +10,6 @@ int main(void)
 
 //TODO: Benchmark w/ nested loops
 
+//TODO: Benchmark w/ conditional branch (test phi node aliasing for reaching defs/invariance)
+
 //TODO: 3rd benchmark w/ more interesting loop invariant stuff to pull up (dependencies)

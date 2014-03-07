@@ -16,6 +16,9 @@
 #include "llvm/Support/CFG.h"
 
 #include <vector>
+#include <map>
+
+using namespace std;
 
 namespace llvm {
 
@@ -70,7 +73,7 @@ struct DataFlowResult {
   DenseMap<Value*, int> domainEntryToValueIdx;
 
   /** Mapping from basic blocks to the IN and OUT value sets for each after analysis converges */
-  DenseMap<BasicBlock*, DataFlowResultForBlock> resultsByBlock;
+  map<BasicBlock*, DataFlowResultForBlock> resultsByBlock;
 };
 
 /** Base interface for running dataflow analysis passes.

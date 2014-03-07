@@ -117,7 +117,7 @@ DataFlowResult DataFlow::run(std::vector<llvm::BasicBlock*> blocks,
                               Direction direction,
                               BitVector boundaryCond,
                               BitVector initInteriorCond) {
-  DenseMap<BasicBlock*, DataFlowResultForBlock> resultsByBlock;
+  map<BasicBlock*, DataFlowResultForBlock> resultsByBlock;
   bool analysisConverged = false;
 
   //Create mapping from domain entries to linear indices
@@ -152,17 +152,25 @@ DataFlowResult DataFlow::run(std::vector<llvm::BasicBlock*> blocks,
     *boundaryVal = boundaryCond;
     boundaryResult.currTransferResult.baseValue = boundaryCond;
     resultsByBlock[*boundaryBlock] = boundaryResult;
+
+//    errs() << "Boundary block init for " << (*boundaryBlock)->getName() << ": IN = " << bitVectorToStr(resultsByBlock[*boundaryBlock].in)
+//        << "; OUT = " << bitVectorToStr(resultsByBlock[*boundaryBlock].out) << "\n";
   }
 
   //Set initial vals for interior blocks (either OUTs for fwd analysis or INs for bwd analysis)
+  //NOTE: Since we don't actually have a dedicated boundary block like ENTRY/EXIT, we include the "boundary"
+  //blocks in the initial interior condition setup (otherwise, initial vals for "boundary" blocks is indeterminate)
   for (std::vector<BasicBlock*>::iterator blockIter = blocks.begin(); blockIter != blocks.end(); ++blockIter) {
-    if (boundaryBlocks.find((*blockIter)) == boundaryBlocks.end()) {
-      DataFlowResultForBlock interiorInitResult = DataFlowResultForBlock();
-      BitVector* interiorInitVal = (direction == FORWARD) ? &interiorInitResult.out : &interiorInitResult.in;
-      *interiorInitVal = initInteriorCond;
-      interiorInitResult.currTransferResult.baseValue = initInteriorCond;
-      resultsByBlock[*blockIter] = interiorInitResult;
-    }
+
+    DataFlowResultForBlock interiorInitResult;
+    if (boundaryBlocks.find((*blockIter)) != boundaryBlocks.end())
+      interiorInitResult = resultsByBlock[*blockIter];
+    BitVector* interiorInitVal = (direction == FORWARD) ? &interiorInitResult.out : &interiorInitResult.in;
+    *interiorInitVal = initInteriorCond;
+    interiorInitResult.currTransferResult.baseValue = initInteriorCond;
+    resultsByBlock[*blockIter] = interiorInitResult;
+//    errs() << "Interior block init for " << (*blockIter)->getName() << ": IN = " << bitVectorToStr(resultsByBlock[*blockIter].in)
+//        << "; OUT = " << bitVectorToStr(resultsByBlock[*blockIter].out) << "\n";
   }
 
   //Generate analysis "predecessor" list for each block (depending on direction of analysis)
@@ -219,6 +227,7 @@ DataFlowResult DataFlow::run(std::vector<llvm::BasicBlock*> blocks,
 
         meetInputs.push_back(meetInput);
       }
+//      errs() << "Meeting inputs for block: " << (*blockIter)->getName() << "\n";
       if (!meetInputs.empty())
         *passInPtr = applyMeet(meetInputs);
 
